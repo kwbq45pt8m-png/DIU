@@ -231,6 +231,92 @@ export function registerPostRoutes(app: App) {
   });
 
   /**
+   * GET /api/users/me/posts
+   * Get authenticated user's own posts with pagination
+   * Query params: limit (default 20), offset (default 0)
+   * Response includes: id, content, fileUrl, fileType, authorUsername, createdAt, likeCount, commentCount, hasLiked
+   * Note: hasLiked is always false (user cannot like their own posts)
+   */
+  app.fastify.get('/api/users/me/posts', async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<any[] | void> => {
+    app.logger.info({ body: request.body }, 'Fetching authenticated user posts');
+
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    const query = request.query as { limit?: string; offset?: string };
+    const limit = Math.min(parseInt(query.limit || '20'), 100); // Cap at 100
+    const offset = parseInt(query.offset || '0');
+
+    app.logger.info({ userId: session.user.id, limit, offset }, 'Fetching user posts');
+
+    try {
+      const posts = await app.db.query.posts.findMany({
+        where: eq(schema.posts.userId, session.user.id),
+        limit,
+        offset,
+        orderBy: desc(schema.posts.createdAt),
+      });
+
+      // Enrich posts with user info, likes, and comments
+      const enrichedPosts = await Promise.all(
+        posts.map(async (post) => {
+          // Get author's username (will be current user's username)
+          const userProfile = await app.db.query.userProfiles.findFirst({
+            where: eq(schema.userProfiles.userId, post.userId),
+            columns: { username: true },
+          });
+
+          // Get like count
+          const likesResult = await app.db
+            .select({ count: count(schema.likes.id) })
+            .from(schema.likes)
+            .where(eq(schema.likes.postId, post.id));
+          const likeCount = Number(likesResult[0]?.count || 0);
+
+          // Get comment count
+          const commentsResult = await app.db
+            .select({ count: count(schema.comments.id) })
+            .from(schema.comments)
+            .where(eq(schema.comments.postId, post.id));
+          const commentCount = Number(commentsResult[0]?.count || 0);
+
+          // Generate signed URL for file if present
+          let fileUrl: string | null = null;
+          if (post.fileKey) {
+            try {
+              const { url } = await app.storage.getSignedUrl(post.fileKey);
+              fileUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, fileKey: post.fileKey }, 'Failed to generate signed URL');
+            }
+          }
+
+          return {
+            id: post.id,
+            content: post.content,
+            fileUrl,
+            fileType: post.fileType,
+            authorUsername: userProfile?.username || 'anonymous',
+            createdAt: post.createdAt,
+            likeCount,
+            commentCount,
+            hasLiked: false, // User cannot like their own posts
+          };
+        })
+      );
+
+      app.logger.info({ userId: session.user.id, count: enrichedPosts.length, limit, offset }, 'User posts retrieved successfully');
+      return enrichedPosts;
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id, limit, offset }, 'Failed to fetch user posts');
+      throw error;
+    }
+  });
+
+  /**
    * GET /api/users/:username/posts
    * Get all posts by a specific user
    */
