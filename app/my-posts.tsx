@@ -186,7 +186,14 @@ export default function MyPostsScreen() {
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <Stack.Screen options={{ title: t('myPosts') }} />
+        <Stack.Screen 
+          options={{ 
+            title: t('myPosts'),
+            headerShown: true,
+            headerBackVisible: true,
+            headerBackTitle: 'Back'
+          }} 
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>{t('loadingPosts')}</Text>
@@ -197,7 +204,14 @@ export default function MyPostsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: t('myPosts') }} />
+      <Stack.Screen 
+        options={{ 
+          title: t('myPosts'),
+          headerShown: true,
+          headerBackVisible: true,
+          headerBackTitle: 'Back'
+        }} 
+      />
 
       <FlatList
         data={posts}
