@@ -8,15 +8,9 @@ import { colors } from '@/styles/commonStyles';
 
 export default function TabLayout() {
   const { user, loading } = useAuth();
-  const router = useRouter();
 
-  useEffect(() => {
-    console.log('TabLayout (iOS): Auth state changed', { user: user?.id, loading });
-    if (!loading && !user) {
-      console.log('TabLayout (iOS): No user, redirecting to auth');
-      router.replace('/auth');
-    }
-  }, [user, loading]);
+  // No automatic redirects - users can browse without auth
+  // Auth is only required when they try to interact (handled in individual screens)
 
   if (loading) {
     return (
@@ -24,10 +18,6 @@ export default function TabLayout() {
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   return (

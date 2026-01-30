@@ -22,12 +22,44 @@ export default function ProfileScreen() {
       await signOut();
       console.log('Profile: Logout successful');
       setShowLogoutModal(false);
-      router.replace('/auth');
+      router.replace('/(tabs)/(home)/');
     } catch (error) {
       console.error('Profile: Logout error', error);
       setLoggingOut(false);
     }
   };
+
+  // If user is not authenticated, show sign-in prompt
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        
+        <View style={styles.unauthContainer}>
+          <View style={styles.unauthIconContainer}>
+            <IconSymbol
+              ios_icon_name="person.circle"
+              android_material_icon_name="account-circle"
+              size={80}
+              color={colors.textSecondary}
+            />
+          </View>
+          <Text style={styles.unauthTitle}>Sign in to view your profile</Text>
+          <Text style={styles.unauthSubtitle}>
+            Create an account or sign in to access your profile, view your posts, and more.
+          </Text>
+          <TouchableOpacity
+            style={styles.signInButton}
+            onPress={() => router.push('/auth')}
+          >
+            <Text style={styles.signInButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -303,5 +335,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  unauthContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  unauthIconContainer: {
+    marginBottom: 24,
+  },
+  unauthTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  unauthSubtitle: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    marginBottom: 32,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  signInButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  signInButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

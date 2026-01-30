@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
@@ -23,40 +23,26 @@ export default function HomeScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authAction, setAuthAction] = useState<'like' | 'comment' | 'post'>('like');
   const router = useRouter();
   const { user } = useAuth();
 
   const loadPosts = async () => {
-    console.log('HomeScreen: Loading posts');
+    console.log('HomeScreen: Loading posts (public endpoint)');
     setLoading(true);
     
-    // TODO: Backend Integration - GET /api/posts to fetch all posts
-    // Mock data for now
-    setTimeout(() => {
-      const mockPosts: Post[] = [
-        {
-          id: '1',
-          content: 'Just needed to get this off my chest... work has been so frustrating lately!',
-          authorUsername: 'anonymous_user',
-          createdAt: new Date().toISOString(),
-          likeCount: 12,
-          commentCount: 3,
-          hasLiked: false,
-        },
-        {
-          id: '2',
-          content: 'Why do people not use turn signals?! It drives me crazy!',
-          authorUsername: 'venting_person',
-          createdAt: new Date(Date.now() - 3600000).toISOString(),
-          likeCount: 45,
-          commentCount: 8,
-          hasLiked: true,
-        },
-      ];
-      setPosts(mockPosts);
+    try {
+      const { apiGet } = await import('@/utils/api');
+      const response = await apiGet<Post[]>('/api/posts');
+      console.log('HomeScreen: Posts loaded from API', { count: response.length });
+      setPosts(response);
+    } catch (error) {
+      console.error('HomeScreen: Error loading posts', error);
+      setPosts([]);
+    } finally {
       setLoading(false);
-      console.log('HomeScreen: Posts loaded', { count: mockPosts.length });
-    }, 1000);
+    }
   };
 
   const onRefresh = async () => {
@@ -71,9 +57,17 @@ export default function HomeScreen() {
   }, []);
 
   const handleLike = async (postId: string) => {
-    console.log('HomeScreen: Like button pressed', { postId });
-    // TODO: Backend Integration - POST /api/posts/:id/like to toggle like
+    console.log('HomeScreen: Like button pressed', { postId, authenticated: !!user });
     
+    // Check authentication
+    if (!user) {
+      console.log('HomeScreen: User not authenticated, showing auth modal');
+      setAuthAction('like');
+      setShowAuthModal(true);
+      return;
+    }
+
+    // Optimistic update
     setPosts(prevPosts =>
       prevPosts.map(post =>
         post.id === postId
@@ -85,16 +79,79 @@ export default function HomeScreen() {
           : post
       )
     );
+
+    try {
+      const { authenticatedPost } = await import('@/utils/api');
+      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
+        `/api/posts/${postId}/like`,
+        {}
+      );
+      console.log('HomeScreen: Like toggled successfully', response);
+      
+      // Update with actual server response
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? {
+                ...post,
+                hasLiked: response.liked,
+                likeCount: response.likeCount,
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error('HomeScreen: Error toggling like', error);
+      // Revert optimistic update on error
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? {
+                ...post,
+                hasLiked: !post.hasLiked,
+                likeCount: post.hasLiked ? post.likeCount + 1 : post.likeCount - 1,
+              }
+            : post
+        )
+      );
+    }
   };
 
   const handleComment = (postId: string) => {
-    console.log('HomeScreen: Comment button pressed', { postId });
+    console.log('HomeScreen: Comment button pressed', { postId, authenticated: !!user });
+    
+    // Check authentication
+    if (!user) {
+      console.log('HomeScreen: User not authenticated, showing auth modal');
+      setAuthAction('comment');
+      setShowAuthModal(true);
+      return;
+    }
+
     router.push(`/post/${postId}`);
   };
 
   const handleCreatePost = () => {
-    console.log('HomeScreen: Create post button pressed');
+    console.log('HomeScreen: Create post button pressed', { authenticated: !!user });
+    
+    // Check authentication
+    if (!user) {
+      console.log('HomeScreen: User not authenticated, showing auth modal');
+      setAuthAction('post');
+      setShowAuthModal(true);
+      return;
+    }
+
     router.push('/create-post');
+  };
+
+  const handleAuthModalClose = () => {
+    setShowAuthModal(false);
+  };
+
+  const handleGoToAuth = () => {
+    setShowAuthModal(false);
+    router.push('/auth');
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -116,6 +173,12 @@ export default function HomeScreen() {
     const days = Math.floor(hours / 24);
     const dayText = days === 1 ? 'day' : 'days';
     return `${days} ${dayText} ago`;
+  };
+
+  const getAuthMessage = () => {
+    if (authAction === 'like') return 'Sign in to like posts';
+    if (authAction === 'comment') return 'Sign in to comment on posts';
+    return 'Sign in to create posts';
   };
 
   const renderPost = ({ item }: { item: Post }) => {
@@ -209,6 +272,39 @@ export default function HomeScreen() {
           color="#FFFFFF"
         />
       </TouchableOpacity>
+
+      {/* Auth Required Modal */}
+      <Modal
+        visible={showAuthModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleAuthModalClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{getAuthMessage()}</Text>
+            <Text style={styles.modalMessage}>
+              Create an account or sign in to interact with posts
+            </Text>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.modalButtonPrimary}
+                onPress={handleGoToAuth}
+              >
+                <Text style={styles.modalButtonTextPrimary}>Sign In</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.modalButtonSecondary}
+                onPress={handleAuthModalClose}
+              >
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,5 +417,62 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalButtons: {
+    gap: 12,
+  },
+  modalButtonPrimary: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalButtonTextPrimary: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonSecondary: {
+    backgroundColor: 'transparent',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalButtonTextSecondary: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

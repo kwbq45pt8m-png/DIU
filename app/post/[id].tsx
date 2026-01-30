@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useAuth } from '@/contexts/AuthContext';
 import Button from '@/components/button';
 
 interface Post {
@@ -26,53 +27,61 @@ interface Comment {
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const { user } = useAuth();
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
+  const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
-
-  useEffect(() => {
-    loadPostAndComments();
-  }, [id]);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const loadPostAndComments = async () => {
-    console.log('PostDetail: Loading post and comments', { postId: id });
+    console.log('PostDetailScreen: Loading post and comments', { postId: id });
     setLoading(true);
 
     try {
-      const { authenticatedGet } = await import('@/utils/api');
+      const { apiGet } = await import('@/utils/api');
       
-      // Load post details
-      const postData = await authenticatedGet<Post>(`/api/posts/${id}`);
-      console.log('PostDetail: Post loaded', postData);
+      // Load post details (public endpoint)
+      const postData = await apiGet<Post>(`/api/posts/${id}`);
+      console.log('PostDetailScreen: Post loaded', postData);
       setPost(postData);
 
-      // Load comments
-      const commentsData = await authenticatedGet<Comment[]>(`/api/posts/${id}/comments`);
-      console.log('PostDetail: Comments loaded', { count: commentsData.length });
+      // Load comments (public endpoint)
+      const commentsData = await apiGet<Comment[]>(`/api/posts/${id}/comments`);
+      console.log('PostDetailScreen: Comments loaded', { count: commentsData.length });
       setComments(commentsData);
     } catch (error) {
-      console.error('PostDetail: Error loading data', error);
-      setPost(null);
-      setComments([]);
+      console.error('PostDetailScreen: Error loading data', error);
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (id) {
+      loadPostAndComments();
+    }
+  }, [id]);
+
   const handleLike = async () => {
-    if (!post) return;
-    console.log('PostDetail: Like button pressed');
+    console.log('PostDetailScreen: Like button pressed', { authenticated: !!user });
     
+    if (!user) {
+      console.log('PostDetailScreen: User not authenticated, showing auth modal');
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (!post) return;
+
     // Optimistic update
-    const previousState = { ...post };
-    setPost({
-      ...post,
-      hasLiked: !post.hasLiked,
-      likeCount: post.hasLiked ? post.likeCount - 1 : post.likeCount + 1,
-    });
+    setPost(prev => prev ? {
+      ...prev,
+      hasLiked: !prev.hasLiked,
+      likeCount: prev.hasLiked ? prev.likeCount - 1 : prev.likeCount + 1,
+    } : null);
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
@@ -80,47 +89,69 @@ export default function PostDetailScreen() {
         `/api/posts/${id}/like`,
         {}
       );
-      console.log('PostDetail: Like toggled successfully', response);
+      console.log('PostDetailScreen: Like toggled successfully', response);
       
-      // Update with actual server response
-      setPost({
-        ...post,
+      setPost(prev => prev ? {
+        ...prev,
         hasLiked: response.liked,
         likeCount: response.likeCount,
-      });
+      } : null);
     } catch (error) {
-      console.error('PostDetail: Error toggling like', error);
+      console.error('PostDetailScreen: Error toggling like', error);
       // Revert on error
-      setPost(previousState);
+      setPost(prev => prev ? {
+        ...prev,
+        hasLiked: !prev.hasLiked,
+        likeCount: prev.hasLiked ? prev.likeCount + 1 : prev.likeCount - 1,
+      } : null);
     }
   };
 
   const handleSubmitComment = async () => {
-    if (!newComment.trim()) return;
+    console.log('PostDetailScreen: Submit comment pressed', { authenticated: !!user });
     
-    console.log('PostDetail: Submit comment', { content: newComment });
+    if (!user) {
+      console.log('PostDetailScreen: User not authenticated, showing auth modal');
+      setShowAuthModal(true);
+      return;
+    }
+
+    const trimmedComment = commentText.trim();
+    if (!trimmedComment) {
+      console.log('PostDetailScreen: Empty comment, ignoring');
+      return;
+    }
+
+    console.log('PostDetailScreen: Submitting comment', { content: trimmedComment });
     setSubmitting(true);
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      const response = await authenticatedPost<Comment>(
+      const newComment = await authenticatedPost<Comment>(
         `/api/posts/${id}/comments`,
-        { content: newComment.trim() }
+        { content: trimmedComment }
       );
       
-      console.log('PostDetail: Comment added successfully', response);
-      setComments([...comments, response]);
-      setNewComment('');
+      console.log('PostDetailScreen: Comment submitted successfully', newComment);
+      setComments(prev => [newComment, ...prev]);
+      setCommentText('');
       
-      if (post) {
-        setPost({ ...post, commentCount: post.commentCount + 1 });
-      }
+      // Update comment count
+      setPost(prev => prev ? { ...prev, commentCount: prev.commentCount + 1 } : null);
     } catch (error) {
-      console.error('PostDetail: Error adding comment', error);
-      setErrorModal({ visible: true, message: 'Failed to add comment. Please try again.' });
+      console.error('PostDetailScreen: Error submitting comment', error);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleAuthModalClose = () => {
+    setShowAuthModal(false);
+  };
+
+  const handleGoToAuth = () => {
+    setShowAuthModal(false);
+    router.push('/auth');
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -168,7 +199,7 @@ export default function PostDetailScreen() {
 
   if (!post) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles.errorContainer}>
         <Text style={styles.errorText}>Post not found</Text>
       </View>
     );
@@ -178,125 +209,135 @@ export default function PostDetailScreen() {
   const likeIconName = post.hasLiked ? 'favorite' : 'favorite-border';
 
   return (
-    <>
-      <Stack.Screen 
-        options={{
-          headerShown: true,
-          title: 'Post',
-          headerStyle: { backgroundColor: colors.backgroundAlt },
-          headerTintColor: colors.text,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          <FlatList
-            data={comments}
-            renderItem={renderComment}
-            keyExtractor={item => item.id}
-            ListHeaderComponent={
-              <View style={styles.postSection}>
-                <View style={styles.postCard}>
-                  <View style={styles.postHeader}>
-                    <Text style={styles.username}>@{post.authorUsername}</Text>
-                    <Text style={styles.timestamp}>{timeAgo}</Text>
-                  </View>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Post' }} />
+      
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <FlatList
+          data={comments}
+          renderItem={renderComment}
+          keyExtractor={item => item.id}
+          ListHeaderComponent={
+            <View style={styles.postSection}>
+              <View style={styles.postHeader}>
+                <Text style={styles.username}>@{post.authorUsername}</Text>
+                <Text style={styles.timestamp}>{timeAgo}</Text>
+              </View>
 
-                  <Text style={styles.postContent}>{post.content}</Text>
+              <Text style={styles.postContent}>{post.content}</Text>
 
-                  <View style={styles.postActions}>
-                    <TouchableOpacity 
-                      style={styles.actionButton}
-                      onPress={handleLike}
-                    >
-                      <IconSymbol
-                        ios_icon_name={post.hasLiked ? 'heart.fill' : 'heart'}
-                        android_material_icon_name={likeIconName}
-                        size={20}
-                        color={post.hasLiked ? colors.primary : colors.textSecondary}
-                      />
-                      <Text style={[styles.actionText, post.hasLiked && styles.actionTextActive]}>
-                        {post.likeCount}
-                      </Text>
-                    </TouchableOpacity>
+              <View style={styles.postActions}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={handleLike}
+                >
+                  <IconSymbol
+                    ios_icon_name={post.hasLiked ? 'heart.fill' : 'heart'}
+                    android_material_icon_name={likeIconName}
+                    size={20}
+                    color={post.hasLiked ? colors.primary : colors.textSecondary}
+                  />
+                  <Text style={[styles.actionText, post.hasLiked && styles.actionTextActive]}>
+                    {post.likeCount}
+                  </Text>
+                </TouchableOpacity>
 
-                    <View style={styles.actionButton}>
-                      <IconSymbol
-                        ios_icon_name="bubble.left"
-                        android_material_icon_name="chat-bubble-outline"
-                        size={20}
-                        color={colors.textSecondary}
-                      />
-                      <Text style={styles.actionText}>{post.commentCount}</Text>
-                    </View>
-                  </View>
+                <View style={styles.actionButton}>
+                  <IconSymbol
+                    ios_icon_name="bubble.left"
+                    android_material_icon_name="chat-bubble-outline"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.actionText}>{post.commentCount}</Text>
                 </View>
+              </View>
 
-                <Text style={styles.commentsTitle}>Comments</Text>
-              </View>
-            }
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No comments yet</Text>
-                <Text style={styles.emptySubtext}>Be the first to comment!</Text>
-              </View>
-            }
+              <View style={styles.divider} />
+              <Text style={styles.commentsTitle}>Comments</Text>
+            </View>
+          }
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No comments yet</Text>
+              <Text style={styles.emptySubtext}>Be the first to comment!</Text>
+            </View>
+          }
+        />
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder={user ? "Add a comment..." : "Sign in to comment"}
+            placeholderTextColor={colors.textSecondary}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
+            editable={!!user}
+            onFocus={() => {
+              if (!user) {
+                setShowAuthModal(true);
+              }
+            }}
           />
+          <TouchableOpacity 
+            style={[styles.sendButton, (!commentText.trim() || submitting) && styles.sendButtonDisabled]}
+            onPress={handleSubmitComment}
+            disabled={!commentText.trim() || submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <IconSymbol
+                ios_icon_name="paperplane.fill"
+                android_material_icon_name="send"
+                size={20}
+                color="#FFFFFF"
+              />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
 
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Add a comment..."
-              placeholderTextColor={colors.textSecondary}
-              value={newComment}
-              onChangeText={setNewComment}
-              multiline
-              maxLength={300}
-            />
-            <TouchableOpacity 
-              style={[styles.sendButton, (!newComment.trim() || submitting) && styles.sendButtonDisabled]}
-              onPress={handleSubmitComment}
-              disabled={!newComment.trim() || submitting}
-            >
-              {submitting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol
-                  ios_icon_name="arrow.up"
-                  android_material_icon_name="send"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-
-        <Modal
-          visible={errorModal.visible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Error</Text>
-              <Text style={styles.modalText}>{errorModal.message}</Text>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={() => setErrorModal({ visible: false, message: '' })}
+      {/* Auth Required Modal */}
+      <Modal
+        visible={showAuthModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleAuthModalClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Sign in to comment</Text>
+            <Text style={styles.modalMessage}>
+              Create an account or sign in to join the conversation
+            </Text>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.modalButtonPrimary}
+                onPress={handleGoToAuth}
               >
-                <Text style={styles.modalButtonText}>OK</Text>
+                <Text style={styles.modalButtonTextPrimary}>Sign In</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.modalButtonSecondary}
+                onPress={handleAuthModalClose}
+              >
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </SafeAreaView>
-    </>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -311,27 +352,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
   errorText: {
     fontSize: 16,
     color: colors.textSecondary,
   },
-  keyboardView: {
-    flex: 1,
-  },
   listContent: {
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   postSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  postCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
     padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   postHeader: {
     flexDirection: 'row',
@@ -371,20 +408,21 @@ const styles = StyleSheet.create({
   actionTextActive: {
     color: colors.primary,
   },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: 16,
+    marginBottom: 16,
+  },
   commentsTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 16,
   },
   commentCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   commentHeader: {
     flexDirection: 'row',
@@ -402,14 +440,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   commentContent: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   emptyContainer: {
     alignItems: 'center',
     paddingTop: 40,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   emptyText: {
     fontSize: 16,
@@ -424,23 +462,23 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 16,
+    padding: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.background,
-    gap: 12,
+    backgroundColor: colors.card,
+    gap: 8,
   },
   input: {
     flex: 1,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.background,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
     maxHeight: 100,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   sendButton: {
     width: 40,
@@ -466,6 +504,8 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalTitle: {
     fontSize: 20,
@@ -474,22 +514,38 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  modalText: {
-    fontSize: 14,
+  modalMessage: {
+    fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  modalButton: {
+  modalButtons: {
+    gap: 12,
+  },
+  modalButtonPrimary: {
     backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  modalButtonText: {
+  modalButtonTextPrimary: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+  },
+  modalButtonSecondary: {
+    backgroundColor: 'transparent',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalButtonTextSecondary: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -33,16 +33,11 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return;
 
-    const inAuthGroup = segments[0] === 'auth' || segments[0] === 'username-setup';
+    console.log('RootLayoutNav: Navigation check', { user: !!user, segments });
 
-    if (!user && !inAuthGroup) {
-      // Redirect to auth if not authenticated
-      router.replace('/auth');
-    } else if (user && inAuthGroup) {
-      // Redirect to home if authenticated and in auth screens
-      router.replace('/(tabs)/(home)/');
-    }
-
+    // No automatic redirects - users can browse without auth
+    // Auth is only required when they try to interact (handled in individual screens)
+    
     setIsNavigationReady(true);
   }, [user, loading, segments]);
 
