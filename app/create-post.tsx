@@ -197,8 +197,8 @@ export default function CreatePostScreen() {
           <View style={styles.footer}>
             <Button
               onPress={handleSubmit}
-              variant="primary"
-              size="large"
+              variant="filled"
+              size="lg"
               loading={loading}
               disabled={loading || (!content.trim() && !mediaUri)}
             >
