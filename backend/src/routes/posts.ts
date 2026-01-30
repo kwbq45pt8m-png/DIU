@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { App } from '../index.js';
-import { eq, desc, and, isNull } from 'drizzle-orm';
+import { eq, desc, and, isNull, count } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 
 /**
@@ -152,8 +152,10 @@ export function registerPostRoutes(app: App) {
 
   /**
    * GET /api/posts
-   * Get feed of all posts with pagination
+   * Get feed of all posts with pagination (PUBLIC - no auth required)
    * Query params: limit (default 20), offset (default 0)
+   * Response includes: id, content, fileUrl, fileType, authorUsername, createdAt, likeCount, commentCount, hasLiked
+   * Note: hasLiked is always false for unauthenticated users (auth checking not supported on public routes)
    */
   app.fastify.get('/api/posts', async (
     request: FastifyRequest,
@@ -170,36 +172,58 @@ export function registerPostRoutes(app: App) {
         limit,
         offset,
         orderBy: desc(schema.posts.createdAt),
-        with: {
-          user: {
-            columns: { id: true, email: true },
-          },
-          likes: {
-            columns: { id: true },
-          },
-          comments: {
-            with: {
-              user: {
-                columns: { id: true, email: true },
-              },
-            },
-          },
-        },
       });
 
-      // Generate signed URLs for files
-      const postsWithUrls = await Promise.all(
+      // Enrich posts with user info, likes, and comments
+      const enrichedPosts = await Promise.all(
         posts.map(async (post) => {
+          // Get author's username
+          const userProfile = await app.db.query.userProfiles.findFirst({
+            where: eq(schema.userProfiles.userId, post.userId),
+            columns: { username: true },
+          });
+
+          // Get like count
+          const likesResult = await app.db
+            .select({ count: count(schema.likes.id) })
+            .from(schema.likes)
+            .where(eq(schema.likes.postId, post.id));
+          const likeCount = Number(likesResult[0]?.count || 0);
+
+          // Get comment count
+          const commentsResult = await app.db
+            .select({ count: count(schema.comments.id) })
+            .from(schema.comments)
+            .where(eq(schema.comments.postId, post.id));
+          const commentCount = Number(commentsResult[0]?.count || 0);
+
+          // Generate signed URL for file if present
+          let fileUrl: string | null = null;
           if (post.fileKey) {
-            const { url } = await app.storage.getSignedUrl(post.fileKey);
-            return { ...post, fileUrl: url };
+            try {
+              const { url } = await app.storage.getSignedUrl(post.fileKey);
+              fileUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, fileKey: post.fileKey }, 'Failed to generate signed URL');
+            }
           }
-          return post;
+
+          return {
+            id: post.id,
+            content: post.content,
+            fileUrl,
+            fileType: post.fileType,
+            authorUsername: userProfile?.username || 'anonymous',
+            createdAt: post.createdAt,
+            likeCount,
+            commentCount,
+            hasLiked: false, // Always false on public endpoint
+          };
         })
       );
 
-      app.logger.info({ count: postsWithUrls.length, limit, offset }, 'Posts feed retrieved successfully');
-      return postsWithUrls;
+      app.logger.info({ count: enrichedPosts.length, limit, offset }, 'Posts feed retrieved successfully');
+      return enrichedPosts;
     } catch (error) {
       app.logger.error({ err: error, limit, offset }, 'Failed to fetch posts feed');
       throw error;
