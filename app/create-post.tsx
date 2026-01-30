@@ -1,12 +1,13 @@
 
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Image, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Image, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import Button from '@/components/button';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function CreatePostScreen() {
   const [content, setContent] = useState('');
@@ -14,7 +15,23 @@ export default function CreatePostScreen() {
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+  const [showAdModal, setShowAdModal] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(10);
   const router = useRouter();
+  const { t } = useLanguage();
+
+  // Ad countdown timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showAdModal && adCountdown > 0) {
+      timer = setTimeout(() => {
+        setAdCountdown(adCountdown - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [showAdModal, adCountdown]);
 
   const pickImage = async () => {
     console.log('CreatePost: Pick image button pressed');
@@ -22,7 +39,7 @@ export default function CreatePostScreen() {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
     if (!permissionResult.granted) {
-      setErrorModal({ visible: true, message: 'Please allow access to your photo library' });
+      setErrorModal({ visible: true, message: t('mediaPermissionError') });
       return;
     }
 
@@ -49,10 +66,18 @@ export default function CreatePostScreen() {
     console.log('CreatePost: Submit button pressed', { hasContent: !!content, hasMedia: !!mediaUri });
     
     if (!content.trim() && !mediaUri) {
-      setErrorModal({ visible: true, message: 'Please add some content or media to your post' });
+      setErrorModal({ visible: true, message: t('postEmptyError') });
       return;
     }
 
+    // Show ad modal before posting
+    setShowAdModal(true);
+    setAdCountdown(10);
+  };
+
+  const finishPost = async () => {
+    console.log('CreatePost: Finishing post after ad');
+    setShowAdModal(false);
     setLoading(true);
 
     try {
@@ -118,16 +143,18 @@ export default function CreatePostScreen() {
     } catch (error) {
       console.error('CreatePost: Error creating post', error);
       setLoading(false);
-      setErrorModal({ visible: true, message: 'Failed to create post. Please try again.' });
+      setErrorModal({ visible: true, message: t('postError') });
     }
   };
+
+  const canSkipAd = adCountdown === 0;
 
   return (
     <>
       <Stack.Screen 
         options={{
           headerShown: true,
-          title: 'Create Post',
+          title: t('createPost'),
           headerStyle: { backgroundColor: colors.backgroundAlt },
           headerTintColor: colors.text,
         }}
@@ -141,7 +168,7 @@ export default function CreatePostScreen() {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="What's on your mind? Let it out..."
+                placeholder={t('postPlaceholder')}
                 placeholderTextColor={colors.textSecondary}
                 value={content}
                 onChangeText={setContent}
@@ -167,7 +194,7 @@ export default function CreatePostScreen() {
                       size={48}
                       color={colors.text}
                     />
-                    <Text style={styles.videoText}>Video selected</Text>
+                    <Text style={styles.videoText}>{t('videoSelected')}</Text>
                   </View>
                 )}
                 <TouchableOpacity style={styles.removeButton} onPress={removeMedia}>
@@ -189,7 +216,7 @@ export default function CreatePostScreen() {
                   size={24}
                   color={colors.text}
                 />
-                <Text style={styles.mediaButtonText}>Add Photo/Video</Text>
+                <Text style={styles.mediaButtonText}>{t('addPhotoVideo')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -202,11 +229,64 @@ export default function CreatePostScreen() {
               loading={loading}
               disabled={loading || (!content.trim() && !mediaUri)}
             >
-              Post
+              {t('post')}
             </Button>
           </View>
         </KeyboardAvoidingView>
 
+        {/* Ad Modal */}
+        <Modal
+          visible={showAdModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (canSkipAd) {
+              setShowAdModal(false);
+            }
+          }}
+        >
+          <View style={styles.adModalOverlay}>
+            <View style={styles.adModalContent}>
+              <View style={styles.adHeader}>
+                <Text style={styles.adTitle}>{t('adTitle')}</Text>
+                <Text style={styles.adSubtitle}>{t('adSubtitle')}</Text>
+              </View>
+
+              <View style={styles.adBody}>
+                <View style={styles.adPlaceholder}>
+                  <IconSymbol
+                    ios_icon_name="play.circle.fill"
+                    android_material_icon_name="play-circle-filled"
+                    size={64}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.adPlaceholderText}>{t('adContent')}</Text>
+                </View>
+              </View>
+
+              <View style={styles.adFooter}>
+                {!canSkipAd ? (
+                  <View style={styles.countdownContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.countdownText}>
+                      {t('adWait')} {adCountdown}s
+                    </Text>
+                  </View>
+                ) : (
+                  <Button
+                    onPress={finishPost}
+                    variant="filled"
+                    size="lg"
+                  >
+                    {t('adContinue')}
+                  </Button>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Error Modal */}
         <Modal
           visible={errorModal.visible}
           transparent
@@ -215,13 +295,13 @@ export default function CreatePostScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Error</Text>
+              <Text style={styles.modalTitle}>{t('error')}</Text>
               <Text style={styles.modalText}>{errorModal.message}</Text>
               <TouchableOpacity
                 style={styles.modalButton}
                 onPress={() => setErrorModal({ visible: false, message: '' })}
               >
-                <Text style={styles.modalButtonText}>OK</Text>
+                <Text style={styles.modalButtonText}>{t('ok')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -319,6 +399,69 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
+  },
+  adModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  adModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    overflow: 'hidden',
+  },
+  adHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  adTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  adSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  adBody: {
+    padding: 20,
+  },
+  adPlaceholder: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+  },
+  adPlaceholderText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  adFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  countdownContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  countdownText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

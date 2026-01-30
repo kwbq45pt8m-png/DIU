@@ -136,6 +136,16 @@ const translations: Record<Language, Record<string, string>> = {
     addPhotoVideo: 'Add Photo/Video',
     videoSelected: 'Video selected',
     charCount: 'characters',
+    postEmptyError: 'Please add some content or media to your post',
+    postError: 'Failed to create post. Please try again.',
+    mediaPermissionError: 'Please allow access to your photo library',
+    
+    // Ad screen
+    adTitle: 'Quick Ad Break',
+    adSubtitle: 'Your post will be published shortly',
+    adContent: 'Advertisement Space',
+    adWait: 'Please wait',
+    adContinue: 'Continue to Post',
     
     // Post detail screen
     postNotFound: 'Post not found',
@@ -257,6 +267,16 @@ const translations: Record<Language, Record<string, string>> = {
     addPhotoVideo: '新增照片/影片',
     videoSelected: '已選擇影片',
     charCount: '字元',
+    postEmptyError: '請為您的貼文新增一些內容或媒體',
+    postError: '建立貼文失敗。請重試。',
+    mediaPermissionError: '請允許存取您的相簿',
+    
+    // Ad screen
+    adTitle: '廣告時間',
+    adSubtitle: '您的貼文即將發佈',
+    adContent: '廣告空間',
+    adWait: '請稍候',
+    adContinue: '繼續發佈',
     
     // Post detail screen
     postNotFound: '找不到貼文',
