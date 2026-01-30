@@ -83,8 +83,8 @@ export default function UsernameSetupScreen() {
         <View style={styles.buttonContainer}>
           <Button
             onPress={handleSubmit}
-            variant="primary"
-            size="large"
+            variant="filled"
+            size="lg"
             loading={loading}
             disabled={loading || !username.trim()}
           >
