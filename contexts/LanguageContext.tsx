@@ -177,6 +177,12 @@ const translations: Record<Language, Record<string, string>> = {
     viewPost: 'View Post',
     signInToViewInteractions: 'Sign in to view interactions',
     signInInteractionsMessage: 'Create an account or sign in to see who likes and comments on your posts.',
+    
+    // My Posts
+    myPosts: 'My Posts',
+    noMyPosts: 'No posts yet',
+    noMyPostsMessage: 'Start sharing your thoughts and they\'ll appear here.',
+    loadingPosts: 'Loading posts...',
   },
   'zh-TW': {
     // App name
@@ -292,5 +298,11 @@ const translations: Record<Language, Record<string, string>> = {
     viewPost: '查看貼文',
     signInToViewInteractions: '登入以查看互動',
     signInInteractionsMessage: '建立帳號或登入以查看誰按讚和評論您的貼文。',
+    
+    // My Posts
+    myPosts: '我的貼文',
+    noMyPosts: '尚無貼文',
+    noMyPostsMessage: '開始分享您的想法，它們會出現在這裡。',
+    loadingPosts: '載入貼文中...',
   },
 };

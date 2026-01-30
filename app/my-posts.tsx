@@ -1,0 +1,334 @@
+
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, Stack } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+
+interface Post {
+  id: string;
+  content: string;
+  fileUrl?: string;
+  fileType?: 'image' | 'video';
+  authorUsername: string;
+  createdAt: string;
+  likeCount: number;
+  commentCount: number;
+  hasLiked: boolean;
+}
+
+export default function MyPostsScreen() {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const { user } = useAuth();
+  const { t } = useLanguage();
+
+  const loadMyPosts = async () => {
+    console.log('[MyPosts] Loading user posts');
+    setLoading(true);
+    
+    try {
+      const { authenticatedGet } = await import('@/utils/api');
+      const response = await authenticatedGet<Post[]>('/api/users/me/posts');
+      console.log('[MyPosts] Posts loaded from API', { count: response.length });
+      setPosts(response);
+    } catch (error) {
+      console.error('[MyPosts] Error loading posts', error);
+      setPosts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    console.log('[MyPosts] Refreshing posts');
+    setRefreshing(true);
+    await loadMyPosts();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadMyPosts();
+    }
+  }, [user]);
+
+  const handleLike = async (postId: string) => {
+    console.log('[MyPosts] Like button pressed', { postId });
+
+    // Optimistic update
+    setPosts(prevPosts =>
+      prevPosts.map(post =>
+        post.id === postId
+          ? {
+              ...post,
+              hasLiked: !post.hasLiked,
+              likeCount: post.hasLiked ? post.likeCount - 1 : post.likeCount + 1,
+            }
+          : post
+      )
+    );
+
+    try {
+      const { authenticatedPost } = await import('@/utils/api');
+      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
+        `/api/posts/${postId}/like`,
+        {}
+      );
+      console.log('[MyPosts] Like toggled successfully', response);
+      
+      // Update with actual server response
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? {
+                ...post,
+                hasLiked: response.liked,
+                likeCount: response.likeCount,
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error('[MyPosts] Error toggling like', error);
+      // Revert optimistic update on error
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? {
+                ...post,
+                hasLiked: !post.hasLiked,
+                likeCount: post.hasLiked ? post.likeCount + 1 : post.likeCount - 1,
+              }
+            : post
+        )
+      );
+    }
+  };
+
+  const handleComment = (postId: string) => {
+    console.log('[MyPosts] Comment button pressed', { postId });
+    router.push(`/post/${postId}`);
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return t('justNow');
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      const minuteText = minutes === 1 ? t('minuteAgo') : t('minutesAgo');
+      return `${minutes} ${minuteText}`;
+    }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      const hourText = hours === 1 ? t('hourAgo') : t('hoursAgo');
+      return `${hours} ${hourText}`;
+    }
+    const days = Math.floor(hours / 24);
+    const dayText = days === 1 ? t('dayAgo') : t('daysAgo');
+    return `${days} ${dayText}`;
+  };
+
+  const renderPost = ({ item }: { item: Post }) => {
+    const timeAgo = formatTimeAgo(item.createdAt);
+    const likeIconName = item.hasLiked ? 'favorite' : 'favorite-border';
+    
+    return (
+      <View style={styles.postCard}>
+        <View style={styles.postHeader}>
+          <Text style={styles.username}>@{item.authorUsername}</Text>
+          <Text style={styles.timestamp}>{timeAgo}</Text>
+        </View>
+
+        <Text style={styles.postContent}>{item.content}</Text>
+
+        <View style={styles.postActions}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleLike(item.id)}
+          >
+            <IconSymbol
+              ios_icon_name={item.hasLiked ? 'heart.fill' : 'heart'}
+              android_material_icon_name={likeIconName}
+              size={20}
+              color={item.hasLiked ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[styles.actionText, item.hasLiked && styles.actionTextActive]}>
+              {item.likeCount}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleComment(item.id)}
+          >
+            <IconSymbol
+              ios_icon_name="bubble.left"
+              android_material_icon_name="chat-bubble-outline"
+              size={20}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.actionText}>{item.commentCount}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen options={{ title: t('myPosts') }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>{t('loadingPosts')}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: t('myPosts') }} />
+
+      <FlatList
+        data={posts}
+        renderItem={renderPost}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <IconSymbol
+              ios_icon_name="doc.text"
+              android_material_icon_name="article"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.emptyText}>{t('noMyPosts')}</Text>
+            <Text style={styles.emptySubtext}>{t('noMyPostsMessage')}</Text>
+            <TouchableOpacity
+              style={styles.createPostButton}
+              onPress={() => router.push('/create-post')}
+            >
+              <Text style={styles.createPostButtonText}>{t('createPost')}</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  postCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  postHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  username: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  postContent: {
+    fontSize: 16,
+    color: colors.text,
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  postActions: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  actionTextActive: {
+    color: colors.primary,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 24,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  createPostButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+  },
+  createPostButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

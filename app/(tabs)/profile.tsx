@@ -106,6 +106,27 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <TouchableOpacity 
+            style={styles.myPostsButton}
+            onPress={() => router.push('/my-posts')}
+          >
+            <IconSymbol
+              ios_icon_name="doc.text"
+              android_material_icon_name="article"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={styles.myPostsButtonText}>{t('myPosts')}</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>{aboutDIUText}</Text>
           <View style={styles.card}>
             <Text style={styles.cardText}>
@@ -305,6 +326,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  myPostsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  myPostsButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+    marginLeft: 12,
   },
   modalOverlay: {
     flex: 1,
