@@ -167,6 +167,16 @@ const translations: Record<Language, Record<string, string>> = {
     language: 'Language',
     english: 'English',
     traditionalChinese: '繁體中文',
+    
+    // Interactions
+    interactions: 'Interactions',
+    noInteractions: 'No interactions yet',
+    noInteractionsMessage: 'When someone likes or comments on your posts, you\'ll see them here.',
+    likedYourPost: 'liked your post',
+    commentedOnYourPost: 'commented on your post',
+    viewPost: 'View Post',
+    signInToViewInteractions: 'Sign in to view interactions',
+    signInInteractionsMessage: 'Create an account or sign in to see who likes and comments on your posts.',
   },
   'zh-TW': {
     // App name
@@ -272,5 +282,15 @@ const translations: Record<Language, Record<string, string>> = {
     language: '語言',
     english: 'English',
     traditionalChinese: '繁體中文',
+    
+    // Interactions
+    interactions: '互動',
+    noInteractions: '尚無互動',
+    noInteractionsMessage: '當有人按讚或評論您的貼文時，您會在這裡看到。',
+    likedYourPost: '按讚了您的貼文',
+    commentedOnYourPost: '評論了您的貼文',
+    viewPost: '查看貼文',
+    signInToViewInteractions: '登入以查看互動',
+    signInInteractionsMessage: '建立帳號或登入以查看誰按讚和評論您的貼文。',
   },
 };
