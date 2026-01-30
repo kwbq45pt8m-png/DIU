@@ -6,6 +6,8 @@ import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 interface Post {
   id: string;
@@ -27,6 +29,7 @@ export default function HomeScreen() {
   const [authAction, setAuthAction] = useState<'like' | 'comment' | 'post'>('like');
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useLanguage();
 
   const loadPosts = async () => {
     console.log('HomeScreen: Loading posts (public endpoint)');
@@ -159,26 +162,26 @@ export default function HomeScreen() {
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (seconds < 60) return 'Just now';
+    if (seconds < 60) return t('justNow');
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
-      const minuteText = minutes === 1 ? 'minute' : 'minutes';
-      return `${minutes} ${minuteText} ago`;
+      const minuteText = minutes === 1 ? t('minuteAgo') : t('minutesAgo');
+      return `${minutes} ${minuteText}`;
     }
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
-      const hourText = hours === 1 ? 'hour' : 'hours';
-      return `${hours} ${hourText} ago`;
+      const hourText = hours === 1 ? t('hourAgo') : t('hoursAgo');
+      return `${hours} ${hourText}`;
     }
     const days = Math.floor(hours / 24);
-    const dayText = days === 1 ? 'day' : 'days';
-    return `${days} ${dayText} ago`;
+    const dayText = days === 1 ? t('dayAgo') : t('daysAgo');
+    return `${days} ${dayText}`;
   };
 
   const getAuthMessage = () => {
-    if (authAction === 'like') return 'Sign in to like posts';
-    if (authAction === 'comment') return 'Sign in to comment on posts';
-    return 'Sign in to create posts';
+    if (authAction === 'like') return t('signInToLike');
+    if (authAction === 'comment') return t('signInToComment');
+    return t('signInToPost');
   };
 
   const renderPost = ({ item }: { item: Post }) => {
@@ -235,11 +238,23 @@ export default function HomeScreen() {
     );
   }
 
+  const appNameText = t('appName');
+  const appSubtitleText = t('appSubtitle');
+  const noPostsText = t('noPosts');
+  const beFirstToVentText = t('beFirstToVent');
+  const authMessageText = getAuthMessage();
+  const createAccountMessageText = t('createAccountMessage');
+  const signInText = t('signIn');
+  const cancelText = t('cancel');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>DIU</Text>
-        <Text style={styles.headerSubtitle}>Vent Anonymously</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>{appNameText}</Text>
+          <Text style={styles.headerSubtitle}>{appSubtitleText}</Text>
+        </View>
+        <LanguageSwitcher />
       </View>
 
       <FlatList
@@ -256,8 +271,8 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No posts yet</Text>
-            <Text style={styles.emptySubtext}>Be the first to vent!</Text>
+            <Text style={styles.emptyText}>{noPostsText}</Text>
+            <Text style={styles.emptySubtext}>{beFirstToVentText}</Text>
           </View>
         }
       />
@@ -283,9 +298,9 @@ export default function HomeScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{getAuthMessage()}</Text>
+            <Text style={styles.modalTitle}>{authMessageText}</Text>
             <Text style={styles.modalMessage}>
-              Create an account or sign in to interact with posts
+              {createAccountMessageText}
             </Text>
             
             <View style={styles.modalButtons}>
@@ -293,14 +308,14 @@ export default function HomeScreen() {
                 style={styles.modalButtonPrimary}
                 onPress={handleGoToAuth}
               >
-                <Text style={styles.modalButtonTextPrimary}>Sign In</Text>
+                <Text style={styles.modalButtonTextPrimary}>{signInText}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.modalButtonSecondary}
                 onPress={handleAuthModalClose}
               >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <Text style={styles.modalButtonTextSecondary}>{cancelText}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -322,11 +337,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  headerLeft: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 32,

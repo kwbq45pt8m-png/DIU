@@ -6,11 +6,14 @@ import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import Button from '@/components/button';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const { t } = useLanguage();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -29,12 +32,29 @@ export default function ProfileScreen() {
     }
   };
 
+  const profileText = t('profile');
+  const signInToViewProfileText = t('signInToViewProfile');
+  const signInProfileMessageText = t('signInProfileMessage');
+  const signInText = t('signIn');
+  const aboutDIUText = t('aboutDIU');
+  const aboutDIUContentText = t('aboutDIUText');
+  const guidelinesText = t('guidelines');
+  const guidelineRespectText = t('guidelineRespect');
+  const guidelineNoHateText = t('guidelineNoHate');
+  const guidelineAnonymousText = t('guidelineAnonymous');
+  const signOutText = t('signOut');
+  const signOutConfirmText = t('signOutConfirm');
+  const signOutMessageText = t('signOutMessage');
+  const cancelText = t('cancel');
+  const signingOutText = t('signingOut');
+
   // If user is not authenticated, show sign-in prompt
   if (!user) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerTitle}>{profileText}</Text>
+          <LanguageSwitcher />
         </View>
         
         <View style={styles.unauthContainer}>
@@ -46,15 +66,15 @@ export default function ProfileScreen() {
               color={colors.textSecondary}
             />
           </View>
-          <Text style={styles.unauthTitle}>Sign in to view your profile</Text>
+          <Text style={styles.unauthTitle}>{signInToViewProfileText}</Text>
           <Text style={styles.unauthSubtitle}>
-            Create an account or sign in to access your profile, view your posts, and more.
+            {signInProfileMessageText}
           </Text>
           <TouchableOpacity
             style={styles.signInButton}
             onPress={() => router.push('/auth')}
           >
-            <Text style={styles.signInButtonText}>Sign In</Text>
+            <Text style={styles.signInButtonText}>{signInText}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -64,7 +84,8 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={styles.headerTitle}>{profileText}</Text>
+        <LanguageSwitcher />
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -85,16 +106,16 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About DIU</Text>
+          <Text style={styles.sectionTitle}>{aboutDIUText}</Text>
           <View style={styles.card}>
             <Text style={styles.cardText}>
-              DIU is an anonymous platform where you can freely express your thoughts, frustrations, and emotions without judgment.
+              {aboutDIUContentText}
             </Text>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Guidelines</Text>
+          <Text style={styles.sectionTitle}>{guidelinesText}</Text>
           <View style={styles.card}>
             <View style={styles.guidelineItem}>
               <IconSymbol
@@ -103,7 +124,7 @@ export default function ProfileScreen() {
                 size={20}
                 color={colors.success}
               />
-              <Text style={styles.guidelineText}>Be respectful to others</Text>
+              <Text style={styles.guidelineText}>{guidelineRespectText}</Text>
             </View>
             <View style={styles.guidelineItem}>
               <IconSymbol
@@ -112,7 +133,7 @@ export default function ProfileScreen() {
                 size={20}
                 color={colors.success}
               />
-              <Text style={styles.guidelineText}>No hate speech or harassment</Text>
+              <Text style={styles.guidelineText}>{guidelineNoHateText}</Text>
             </View>
             <View style={styles.guidelineItem}>
               <IconSymbol
@@ -121,7 +142,7 @@ export default function ProfileScreen() {
                 size={20}
                 color={colors.success}
               />
-              <Text style={styles.guidelineText}>Keep it anonymous and safe</Text>
+              <Text style={styles.guidelineText}>{guidelineAnonymousText}</Text>
             </View>
           </View>
         </View>
@@ -137,7 +158,7 @@ export default function ProfileScreen() {
               size={20}
               color={colors.primary}
             />
-            <Text style={styles.logoutButtonText}>Sign Out</Text>
+            <Text style={styles.logoutButtonText}>{signOutText}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -150,9 +171,9 @@ export default function ProfileScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Sign Out?</Text>
+            <Text style={styles.modalTitle}>{signOutConfirmText}</Text>
             <Text style={styles.modalText}>
-              Are you sure you want to sign out of DIU?
+              {signOutMessageText}
             </Text>
             
             <View style={styles.modalButtons}>
@@ -161,7 +182,7 @@ export default function ProfileScreen() {
                 onPress={() => setShowLogoutModal(false)}
                 disabled={loggingOut}
               >
-                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+                <Text style={styles.modalButtonTextCancel}>{cancelText}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -170,7 +191,7 @@ export default function ProfileScreen() {
                 disabled={loggingOut}
               >
                 <Text style={styles.modalButtonTextConfirm}>
-                  {loggingOut ? 'Signing Out...' : 'Sign Out'}
+                  {loggingOut ? signingOutText : signOutText}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -187,6 +208,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 12,
