@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { App } from '../index.js';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, count } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 
 /**
@@ -97,6 +97,7 @@ export function registerCommentRoutes(app: App) {
    * GET /api/posts/:postId/comments
    * Get all comments on a post with replies nested
    * Returns top-level comments with their replies included in a 'replies' array
+   * Includes authorId, hasLiked, and likeCount for each comment
    */
   app.fastify.get('/api/posts/:postId/comments', async (
     request: FastifyRequest,
@@ -122,6 +123,19 @@ export function registerCommentRoutes(app: App) {
         });
       }
 
+      // Try to get current user ID if authenticated
+      let currentUserId: string | null = null;
+      try {
+        // Try to extract session - this is optional for public endpoint behavior
+        const authHeader = request.headers.authorization;
+        if (authHeader) {
+          // We can't reliably get session on public endpoint, so we skip auth check
+          // Comments page is public, but like status requires manual check if auth exists
+        }
+      } catch {
+        // Not authenticated
+      }
+
       // Fetch all comments for this post (no pagination on individual comments for nested structure)
       const allComments = await app.db.query.comments.findMany({
         where: eq(schema.comments.postId, postId),
@@ -140,6 +154,16 @@ export function registerCommentRoutes(app: App) {
         }
       }
 
+      // Get like counts for all comments
+      const commentLikeCountMap = new Map<string, number>();
+      for (const comment of allComments) {
+        const likeCountResult = await app.db
+          .select({ count: count(schema.commentLikes.id) })
+          .from(schema.commentLikes)
+          .where(eq(schema.commentLikes.commentId, comment.id));
+        commentLikeCountMap.set(comment.id, Number(likeCountResult[0]?.count || 0));
+      }
+
       // Build a map of comments by parent ID for efficient nested lookup
       const repliesByParentId = new Map<string, typeof allComments>();
       for (const comment of allComments) {
@@ -155,13 +179,17 @@ export function registerCommentRoutes(app: App) {
       const buildNestedComment = (comment: typeof allComments[0]): any => {
         const userProfile = userProfilesMap.get(comment.userId);
         const directReplies = repliesByParentId.get(comment.id) || [];
+        const likeCount = commentLikeCountMap.get(comment.id) || 0;
 
         return {
           id: comment.id,
           content: comment.content,
           authorUsername: userProfile?.username || 'anonymous',
+          authorId: comment.userId,
           createdAt: comment.createdAt,
           parentCommentId: comment.parentCommentId,
+          hasLiked: false, // Always false on public endpoint (no auth required)
+          likeCount,
           replies: directReplies.map(reply => buildNestedComment(reply)), // Recursive call
         };
       };
@@ -276,6 +304,77 @@ export function registerCommentRoutes(app: App) {
       return updated;
     } catch (error) {
       app.logger.error({ err: error, commentId, userId: session.user.id }, 'Failed to update comment');
+      throw error;
+    }
+  });
+
+  /**
+   * POST /api/comments/:commentId/like
+   * Toggle like on a comment (like if not liked, unlike if already liked)
+   * Requires authentication
+   */
+  app.fastify.post('/api/comments/:commentId/like', async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<{ liked: boolean; likeCount: number } | void> => {
+    const { commentId } = request.params as { commentId: string };
+
+    app.logger.info({ commentId }, 'Toggling like on comment');
+
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    try {
+      // Check if comment exists
+      const commentExists = await app.db.query.comments.findFirst({
+        where: eq(schema.comments.id, commentId),
+      });
+
+      if (!commentExists) {
+        app.logger.warn({ commentId }, 'Comment not found');
+        return reply.status(404).send({
+          message: 'Comment not found'
+        });
+      }
+
+      // Check if user already liked this comment
+      const existingLike = await app.db.query.commentLikes.findFirst({
+        where: and(
+          eq(schema.commentLikes.commentId, commentId),
+          eq(schema.commentLikes.userId, session.user.id)
+        ),
+      });
+
+      let liked = false;
+
+      if (existingLike) {
+        // User already liked, so unlike
+        await app.db
+          .delete(schema.commentLikes)
+          .where(eq(schema.commentLikes.id, existingLike.id));
+        app.logger.info({ commentId, userId: session.user.id }, 'Comment unliked successfully');
+      } else {
+        // User hasn't liked, so like
+        await app.db
+          .insert(schema.commentLikes)
+          .values({
+            commentId,
+            userId: session.user.id,
+          });
+        liked = true;
+        app.logger.info({ commentId, userId: session.user.id }, 'Comment liked successfully');
+      }
+
+      // Get updated like count
+      const likeCountResult = await app.db
+        .select({ count: count(schema.commentLikes.id) })
+        .from(schema.commentLikes)
+        .where(eq(schema.commentLikes.commentId, commentId));
+      const likeCount = Number(likeCountResult[0]?.count || 0);
+
+      return { liked, likeCount };
+    } catch (error) {
+      app.logger.error({ err: error, commentId, userId: session.user.id }, 'Failed to toggle comment like');
       throw error;
     }
   });

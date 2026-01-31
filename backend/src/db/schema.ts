@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, boolean, integer } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, boolean, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { user } from './auth-schema.js';
 
@@ -54,6 +54,19 @@ export const comments = pgTable('comments', {
 });
 
 /**
+ * Comment Likes - tracks which users liked which comments
+ * Unique constraint prevents duplicate likes from the same user on the same comment
+ */
+export const commentLikes = pgTable('comment_likes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  commentId: uuid('comment_id').notNull().references(() => comments.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueLike: uniqueIndex('unique_comment_like').on(table.commentId, table.userId),
+}));
+
+/**
  * Relations
  */
 
@@ -103,5 +116,17 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   }),
   replies: many(comments, {
     relationName: 'replies',
+  }),
+  likes: many(commentLikes),
+}));
+
+export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
+  comment: one(comments, {
+    fields: [commentLikes.commentId],
+    references: [comments.id],
+  }),
+  user: one(user, {
+    fields: [commentLikes.userId],
+    references: [user.id],
   }),
 }));
