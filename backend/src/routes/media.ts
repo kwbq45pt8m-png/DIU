@@ -12,12 +12,14 @@ export function registerMediaRoutes(app: App) {
    * Upload media file (image or video)
    * Multipart form data with 'media' field
    * Max file size: 100MB
-   * Returns: { url: string, mediaType: 'image' | 'video' }
+   * Returns: { url: string, mediaKey: string, mediaType: 'image' | 'video' }
+   * mediaKey is the permanent storage key for the file
+   * url is a temporary signed URL for immediate preview
    */
   app.fastify.post('/api/upload/media', async (
     request: FastifyRequest,
     reply: FastifyReply
-  ): Promise<{ url: string; mediaType: 'image' | 'video' } | void> => {
+  ): Promise<{ url: string; mediaKey: string; mediaType: 'image' | 'video' } | void> => {
     app.logger.info({}, 'Uploading media file');
 
     const session = await requireAuth(request, reply);
@@ -61,13 +63,14 @@ export function registerMediaRoutes(app: App) {
         const key = `media/${session.user.id}/${fileName}`;
 
         const uploadedKey = await app.storage.upload(key, buffer);
-        app.logger.info({ userId: session.user.id, fileKey: uploadedKey }, 'Media file uploaded successfully');
+        app.logger.info({ userId: session.user.id, mediaKey: uploadedKey }, 'Media file uploaded successfully');
 
-        // Generate signed URL
+        // Generate signed URL for immediate preview
         const { url } = await app.storage.getSignedUrl(uploadedKey);
 
         return {
           url,
+          mediaKey: uploadedKey,
           mediaType,
         };
       } catch (uploadError) {

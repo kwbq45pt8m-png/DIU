@@ -12,8 +12,8 @@ export function registerPostRoutes(app: App) {
   /**
    * POST /api/posts
    * Create a new post (text, photo, or video)
-   * Supports mediaUrl/mediaType for pre-uploaded media or multipart form data for file uploads
-   * Body: { content?: string, mediaUrl?: string, mediaType?: 'image' | 'video' }
+   * Body: { content?: string, mediaKey?: string, mediaType?: 'image' | 'video' }
+   * mediaKey is the permanent storage key returned from /api/upload/media
    */
   app.fastify.post('/api/posts', async (
     request: FastifyRequest,
@@ -28,32 +28,32 @@ export function registerPostRoutes(app: App) {
       // Get content and media info from request body
       const body = request.body as any;
       const content = body?.content || null;
-      const mediaUrl = body?.mediaUrl || null;
+      const mediaKey = body?.mediaKey || null;
       const mediaType = body?.mediaType || null;
 
       // Validate post has either content or media
-      if (!content && !mediaUrl) {
+      if (!content && !mediaKey) {
         app.logger.warn({ userId: session.user.id }, 'Post must have content or media');
         return reply.status(400).send({
-          message: 'Post must contain either text content or media URL'
+          message: 'Post must contain either text content or media'
         });
       }
 
-      // Validate media type if mediaUrl is provided
-      if (mediaUrl && !['image', 'video'].includes(mediaType)) {
+      // Validate media type if mediaKey is provided
+      if (mediaKey && !['image', 'video'].includes(mediaType)) {
         app.logger.warn({ userId: session.user.id, mediaType }, 'Invalid media type');
         return reply.status(400).send({
           message: 'Media type must be either "image" or "video"'
         });
       }
 
-      // Create post
+      // Create post (mediaUrl stores the permanent storage key)
       const [post] = await app.db
         .insert(schema.posts)
         .values({
           userId: session.user.id,
           content: content || null,
-          mediaUrl: mediaUrl || null,
+          mediaUrl: mediaKey || null, // Store the permanent storage key
           mediaType: mediaType || null,
           fileKey: null, // Legacy field for backward compatibility
           fileType: 'text', // Legacy field for backward compatibility
@@ -175,10 +175,21 @@ export function registerPostRoutes(app: App) {
             .where(eq(schema.comments.postId, post.id));
           const commentCount = Number(commentsResult[0]?.count || 0);
 
+          // Generate fresh signed URL from storage key if media exists
+          let mediaUrl: string | null = null;
+          if (post.mediaUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(post.mediaUrl);
+              mediaUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, mediaKey: post.mediaUrl }, 'Failed to generate signed URL');
+            }
+          }
+
           return {
             id: post.id,
             content: post.content,
-            mediaUrl: post.mediaUrl,
+            mediaUrl,
             mediaType: post.mediaType,
             authorUsername: userProfile?.username || 'anonymous',
             createdAt: post.createdAt,
@@ -250,10 +261,21 @@ export function registerPostRoutes(app: App) {
             .where(eq(schema.comments.postId, post.id));
           const commentCount = Number(commentsResult[0]?.count || 0);
 
+          // Generate fresh signed URL from storage key if media exists
+          let mediaUrl: string | null = null;
+          if (post.mediaUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(post.mediaUrl);
+              mediaUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, mediaKey: post.mediaUrl }, 'Failed to generate signed URL');
+            }
+          }
+
           return {
             id: post.id,
             content: post.content,
-            mediaUrl: post.mediaUrl,
+            mediaUrl,
             mediaType: post.mediaType,
             authorUsername: userProfile?.username || 'anonymous',
             createdAt: post.createdAt,
@@ -344,7 +366,8 @@ export function registerPostRoutes(app: App) {
   /**
    * PUT /api/posts/:postId
    * Update a post (only owner can update)
-   * Body: { content?: string, mediaUrl?: string, mediaType?: 'image' | 'video' }
+   * Body: { content?: string, mediaKey?: string, mediaType?: 'image' | 'video' }
+   * mediaKey is the permanent storage key returned from /api/upload/media
    */
   app.fastify.put('/api/posts/:postId', async (
     request: FastifyRequest,
@@ -381,31 +404,31 @@ export function registerPostRoutes(app: App) {
       // Get content and media info from request body
       const body = request.body as any;
       const newContent = body?.content !== undefined ? body.content : post.content;
-      const newMediaUrl = body?.mediaUrl !== undefined ? body.mediaUrl : post.mediaUrl;
+      const newMediaKey = body?.mediaKey !== undefined ? body.mediaKey : post.mediaUrl; // mediaUrl stores the key
       const newMediaType = body?.mediaType !== undefined ? body.mediaType : post.mediaType;
 
       // Validate post has either content or media
-      if (!newContent && !newMediaUrl) {
+      if (!newContent && !newMediaKey) {
         app.logger.warn({ postId, userId: session.user.id }, 'Post must have content or media');
         return reply.status(400).send({
-          message: 'Post must contain either text content or media URL'
+          message: 'Post must contain either text content or media'
         });
       }
 
-      // Validate media type if mediaUrl is provided
-      if (newMediaUrl && !['image', 'video'].includes(newMediaType)) {
+      // Validate media type if mediaKey is provided
+      if (newMediaKey && !['image', 'video'].includes(newMediaType)) {
         app.logger.warn({ postId, userId: session.user.id, mediaType: newMediaType }, 'Invalid media type');
         return reply.status(400).send({
           message: 'Media type must be either "image" or "video"'
         });
       }
 
-      // Update post
+      // Update post (mediaUrl stores the permanent storage key)
       const [updatedPost] = await app.db
         .update(schema.posts)
         .set({
           content: newContent || null,
-          mediaUrl: newMediaUrl || null,
+          mediaUrl: newMediaKey || null, // Store the permanent storage key
           mediaType: newMediaType || null,
           updatedAt: new Date(),
         })
@@ -432,11 +455,22 @@ export function registerPostRoutes(app: App) {
         .where(eq(schema.comments.postId, postId));
       const commentCount = Number(commentsResult[0]?.count || 0);
 
+      // Generate fresh signed URL from storage key if media exists
+      let mediaUrl: string | null = null;
+      if (updatedPost.mediaUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(updatedPost.mediaUrl);
+          mediaUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, mediaKey: updatedPost.mediaUrl }, 'Failed to generate signed URL');
+        }
+      }
+
       app.logger.info({ postId, userId: session.user.id }, 'Post updated successfully');
       return {
         id: updatedPost.id,
         content: updatedPost.content,
-        mediaUrl: updatedPost.mediaUrl,
+        mediaUrl,
         mediaType: updatedPost.mediaType,
         authorUsername: userProfile?.username || 'anonymous',
         createdAt: updatedPost.createdAt,
@@ -485,13 +519,23 @@ export function registerPostRoutes(app: App) {
         });
       }
 
-      // Delete file from storage if exists
+      // Delete file from storage if exists (both old fileKey and new mediaUrl formats)
       if (post.fileKey) {
         try {
           await app.storage.delete(post.fileKey);
           app.logger.info({ fileKey: post.fileKey }, 'File deleted from storage');
         } catch (storageError) {
           app.logger.warn({ err: storageError, fileKey: post.fileKey }, 'Failed to delete file from storage');
+          // Don't fail the post deletion if file deletion fails
+        }
+      }
+
+      if (post.mediaUrl) {
+        try {
+          await app.storage.delete(post.mediaUrl);
+          app.logger.info({ mediaKey: post.mediaUrl }, 'Media file deleted from storage');
+        } catch (storageError) {
+          app.logger.warn({ err: storageError, mediaKey: post.mediaUrl }, 'Failed to delete media file from storage');
           // Don't fail the post deletion if file deletion fails
         }
       }
