@@ -40,6 +40,7 @@ export default function HomeScreen() {
   const { t } = useLanguage();
   const isNavigatingRef = useRef(false);
   const lastNavigationTimeRef = useRef(0);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadPosts = async () => {
     console.log('HomeScreen: Loading posts (public endpoint)');
@@ -67,6 +68,13 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadPosts();
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleLike = async (postId: string) => {
@@ -79,6 +87,12 @@ export default function HomeScreen() {
       setShowAuthModal(true);
       return;
     }
+
+    // Get current like state for this post
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const wasLiked = post.hasLiked;
 
     // Optimistic update
     setPosts(prevPosts =>
@@ -94,25 +108,20 @@ export default function HomeScreen() {
     );
 
     try {
-      const { authenticatedPost } = await import('@/utils/api');
-      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
-        `/api/posts/${postId}/like`,
-        {}
-      );
-      console.log('HomeScreen: Like toggled successfully', response);
+      const { authenticatedPost, authenticatedDelete } = await import('@/utils/api');
       
-      // Update with actual server response
-      setPosts(prevPosts =>
-        prevPosts.map(post =>
-          post.id === postId
-            ? {
-                ...post,
-                hasLiked: response.liked,
-                likeCount: response.likeCount,
-              }
-            : post
-        )
-      );
+      if (wasLiked) {
+        // Unlike the post
+        await authenticatedDelete(`/api/posts/${postId}/like`, {});
+        console.log('HomeScreen: Post unliked successfully');
+      } else {
+        // Like the post
+        await authenticatedPost(`/api/posts/${postId}/like`, {});
+        console.log('HomeScreen: Post liked successfully');
+      }
+      
+      // Reload posts to get accurate counts
+      await loadPosts();
     } catch (error) {
       console.error('HomeScreen: Error toggling like', error);
       // Revert optimistic update on error
@@ -121,8 +130,8 @@ export default function HomeScreen() {
           post.id === postId
             ? {
                 ...post,
-                hasLiked: !post.hasLiked,
-                likeCount: post.hasLiked ? post.likeCount + 1 : post.likeCount - 1,
+                hasLiked: wasLiked,
+                likeCount: wasLiked ? post.likeCount + 1 : post.likeCount - 1,
               }
             : post
         )
@@ -161,16 +170,27 @@ export default function HomeScreen() {
   const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
     const now = Date.now();
     
-    // Prevent multiple rapid taps (debounce with 2 second window)
-    if (isNavigatingRef.current || (now - lastNavigationTimeRef.current < 2000)) {
+    // Strong debounce: prevent multiple rapid taps (3 second window)
+    if (isNavigatingRef.current) {
+      console.log('HomeScreen: Navigation blocked - already navigating');
+      return;
+    }
+    
+    if (now - lastNavigationTimeRef.current < 3000) {
       console.log('HomeScreen: Navigation blocked - too soon after last navigation');
       return;
     }
 
     console.log('HomeScreen: Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
     
+    // Set navigation flag immediately
     isNavigatingRef.current = true;
     lastNavigationTimeRef.current = now;
+
+    // Clear any existing timeout
+    if (navigationTimeoutRef.current) {
+      clearTimeout(navigationTimeoutRef.current);
+    }
 
     try {
       router.push({
@@ -185,10 +205,11 @@ export default function HomeScreen() {
       isNavigatingRef.current = false;
     }
 
-    // Reset the navigation flag after navigation completes
-    setTimeout(() => {
+    // Reset the navigation flag after a longer delay
+    navigationTimeoutRef.current = setTimeout(() => {
       isNavigatingRef.current = false;
-    }, 2000);
+      console.log('HomeScreen: Navigation flag reset');
+    }, 3000);
   };
 
   const handleAuthModalClose = () => {

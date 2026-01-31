@@ -40,6 +40,7 @@ export default function HomeScreen() {
   const { t } = useLanguage();
   const isNavigatingRef = useRef(false);
   const lastNavigationTimeRef = useRef(0);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadPosts = async () => {
     console.log('HomeScreen: Loading posts (public endpoint)');
@@ -67,6 +68,13 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadPosts();
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleLike = async (postId: string) => {
@@ -162,16 +170,27 @@ export default function HomeScreen() {
   const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
     const now = Date.now();
     
-    // Prevent multiple rapid taps (debounce with 2 second window)
-    if (isNavigatingRef.current || (now - lastNavigationTimeRef.current < 2000)) {
+    // Strong debounce: prevent multiple rapid taps (3 second window)
+    if (isNavigatingRef.current) {
+      console.log('HomeScreen: Navigation blocked - already navigating');
+      return;
+    }
+    
+    if (now - lastNavigationTimeRef.current < 3000) {
       console.log('HomeScreen: Navigation blocked - too soon after last navigation');
       return;
     }
 
     console.log('HomeScreen: Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
     
+    // Set navigation flag immediately
     isNavigatingRef.current = true;
     lastNavigationTimeRef.current = now;
+
+    // Clear any existing timeout
+    if (navigationTimeoutRef.current) {
+      clearTimeout(navigationTimeoutRef.current);
+    }
 
     try {
       router.push({
@@ -186,10 +205,11 @@ export default function HomeScreen() {
       isNavigatingRef.current = false;
     }
 
-    // Reset the navigation flag after navigation completes
-    setTimeout(() => {
+    // Reset the navigation flag after a longer delay
+    navigationTimeoutRef.current = setTimeout(() => {
       isNavigatingRef.current = false;
-    }, 2000);
+      console.log('HomeScreen: Navigation flag reset');
+    }, 3000);
   };
 
   const handleAuthModalClose = () => {

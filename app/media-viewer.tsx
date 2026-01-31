@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Dimensions, StatusBar, Platform, ActivityIndicator, Text } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { Image } from 'react-native';
@@ -15,6 +15,8 @@ export default function MediaViewerScreen() {
   const [videoRef, setVideoRef] = useState<Video | null>(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const hasAttemptedLoad = useRef(false);
+  const errorCount = useRef(0);
 
   // Handle both 'url' and 'mediaUrl' params for backwards compatibility
   const mediaUrl = params.url || params.mediaUrl;
@@ -27,11 +29,16 @@ export default function MediaViewerScreen() {
     if (!mediaUrl || !mediaType) {
       console.error('[MediaViewer] Missing required params', { mediaUrl, mediaType });
       setImageError(true);
+      setImageLoading(false);
     }
   }, []);
 
   const handleClose = () => {
     console.log('[MediaViewer] User closed viewer');
+    // Reset refs
+    hasAttemptedLoad.current = false;
+    errorCount.current = 0;
+    
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -40,7 +47,11 @@ export default function MediaViewerScreen() {
   };
 
   const handleImageLoadStart = () => {
-    console.log('[MediaViewer] Image load started');
+    // Only log if this is the first load attempt
+    if (!hasAttemptedLoad.current) {
+      console.log('[MediaViewer] Image load started');
+      hasAttemptedLoad.current = true;
+    }
     setImageLoading(true);
     setImageError(false);
   };
@@ -49,10 +60,17 @@ export default function MediaViewerScreen() {
     console.log('[MediaViewer] Image loaded successfully');
     setImageLoading(false);
     setImageError(false);
+    errorCount.current = 0;
   };
 
   const handleImageError = (error: any) => {
-    console.error('[MediaViewer] Image load failed:', error?.nativeEvent?.error || 'Unknown error');
+    errorCount.current += 1;
+    
+    // Only log the first few errors to avoid spam
+    if (errorCount.current <= 2) {
+      console.error('[MediaViewer] Image load failed:', error?.nativeEvent?.error || 'Unknown error');
+    }
+    
     setImageLoading(false);
     setImageError(true);
   };
@@ -69,6 +87,12 @@ export default function MediaViewerScreen() {
           }} 
         />
         <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={48}
+            color="#FFFFFF"
+          />
           <Text style={styles.errorText}>Media not found</Text>
           <TouchableOpacity 
             style={styles.errorButton}
@@ -97,20 +121,24 @@ export default function MediaViewerScreen() {
       <View style={styles.mediaContainer}>
         {mediaType === 'image' ? (
           <>
-            <Image
-              source={{ uri: mediaUrl }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-              onLoadStart={handleImageLoadStart}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
+            {!imageError ? (
+              <Image
+                source={{ uri: mediaUrl }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+                onLoadStart={handleImageLoadStart}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            ) : null}
+            
             {imageLoading && !imageError && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#FFFFFF" />
                 <Text style={styles.loadingText}>Loading image...</Text>
               </View>
             )}
+            
             {imageError && (
               <View style={styles.errorContainer}>
                 <IconSymbol
@@ -120,7 +148,7 @@ export default function MediaViewerScreen() {
                   color="#FFFFFF"
                 />
                 <Text style={styles.errorText}>Failed to load image</Text>
-                <Text style={styles.errorSubtext}>The image may have been removed or the link expired</Text>
+                <Text style={styles.errorSubtext}>The image link may have expired or the file was removed</Text>
                 <TouchableOpacity 
                   style={styles.errorButton}
                   onPress={handleClose}
