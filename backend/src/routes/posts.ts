@@ -386,6 +386,163 @@ export function registerPostRoutes(app: App) {
   });
 
   /**
+   * PUT /api/posts/:postId
+   * Update a post (only owner can update)
+   * Supports updating content and file
+   */
+  app.fastify.put('/api/posts/:postId', async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<{ id: string; content: string | null; fileUrl: string | null; fileType: string; authorUsername: string; createdAt: Date; likeCount: number; commentCount: number; hasLiked: boolean } | void> => {
+    const { postId } = request.params as { postId: string };
+
+    app.logger.info({ postId, body: request.body }, 'Updating post');
+
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    try {
+      // Fetch the post
+      const post = await app.db.query.posts.findFirst({
+        where: eq(schema.posts.id, postId),
+      });
+
+      if (!post) {
+        app.logger.warn({ postId }, 'Post not found');
+        return reply.status(404).send({
+          message: 'Post not found'
+        });
+      }
+
+      // Check ownership
+      if (post.userId !== session.user.id) {
+        app.logger.warn({ postId, userId: session.user.id }, 'Unauthorized post update attempt');
+        return reply.status(403).send({
+          message: 'You can only update your own posts'
+        });
+      }
+
+      // Handle file upload if present
+      let newFileKey: string | null = post.fileKey;
+      let newFileType: 'text' | 'photo' | 'video' = post.fileType as any;
+
+      // Check if this is multipart form data with a file
+      const contentType = request.headers['content-type'];
+      if (contentType && contentType.includes('multipart/form-data')) {
+        const data = await request.file({ limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
+
+        if (data) {
+          // Delete old file if it exists
+          if (post.fileKey) {
+            try {
+              await app.storage.delete(post.fileKey);
+              app.logger.info({ fileKey: post.fileKey }, 'Old file deleted from storage');
+            } catch (deleteError) {
+              app.logger.warn({ err: deleteError, fileKey: post.fileKey }, 'Failed to delete old file');
+              // Continue anyway
+            }
+          }
+
+          // Upload new file
+          try {
+            // Determine file type from MIME type
+            const mimeType = data.mimetype;
+            if (mimeType.startsWith('image/')) {
+              newFileType = 'photo';
+            } else if (mimeType.startsWith('video/')) {
+              newFileType = 'video';
+            }
+
+            const buffer = await data.toBuffer();
+            const timestamp = Date.now();
+            const fileName = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const key = `posts/${session.user.id}/${timestamp}-${fileName}`;
+
+            newFileKey = await app.storage.upload(key, buffer);
+            app.logger.info({ fileKey: newFileKey, userId: session.user.id }, 'File uploaded to storage');
+          } catch (uploadError) {
+            app.logger.error({ err: uploadError, userId: session.user.id }, 'File upload failed or exceeded size limit');
+            return reply.status(413).send({
+              message: 'File too large or upload failed (max 50MB)'
+            });
+          }
+        }
+      }
+
+      // Get content from request body
+      const body = request.body as any;
+      const newContent = body?.content !== undefined ? body.content : post.content;
+
+      // Validate post has either content or file
+      if (!newContent && newFileType === 'text' && !newFileKey) {
+        app.logger.warn({ postId, userId: session.user.id }, 'Post must have content or file');
+        return reply.status(400).send({
+          message: 'Post must contain either text content or a file'
+        });
+      }
+
+      // Update post
+      const [updatedPost] = await app.db
+        .update(schema.posts)
+        .set({
+          content: newContent || null,
+          fileKey: newFileKey,
+          fileType: newFileType,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.posts.id, postId))
+        .returning();
+
+      // Get author's username
+      const userProfile = await app.db.query.userProfiles.findFirst({
+        where: eq(schema.userProfiles.userId, updatedPost.userId),
+        columns: { username: true },
+      });
+
+      // Get like count
+      const likesResult = await app.db
+        .select({ count: count(schema.likes.id) })
+        .from(schema.likes)
+        .where(eq(schema.likes.postId, postId));
+      const likeCount = Number(likesResult[0]?.count || 0);
+
+      // Get comment count
+      const commentsResult = await app.db
+        .select({ count: count(schema.comments.id) })
+        .from(schema.comments)
+        .where(eq(schema.comments.postId, postId));
+      const commentCount = Number(commentsResult[0]?.count || 0);
+
+      // Generate signed URL for file if present
+      let fileUrl: string | null = null;
+      if (updatedPost.fileKey) {
+        try {
+          const { url } = await app.storage.getSignedUrl(updatedPost.fileKey);
+          fileUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, fileKey: updatedPost.fileKey }, 'Failed to generate signed URL');
+        }
+      }
+
+      app.logger.info({ postId, userId: session.user.id }, 'Post updated successfully');
+      return {
+        id: updatedPost.id,
+        content: updatedPost.content,
+        fileUrl,
+        fileType: updatedPost.fileType,
+        authorUsername: userProfile?.username || 'anonymous',
+        createdAt: updatedPost.createdAt,
+        likeCount,
+        commentCount,
+        hasLiked: false, // User cannot like their own posts
+      };
+    } catch (error) {
+      app.logger.error({ err: error, postId, userId: session.user.id }, 'Failed to update post');
+      throw error;
+    }
+  });
+
+  /**
    * DELETE /api/posts/:postId
    * Delete a post (only owner can delete)
    */
