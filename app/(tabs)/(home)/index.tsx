@@ -39,6 +39,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const isNavigatingRef = useRef(false);
+  const lastNavigationTimeRef = useRef(0);
 
   const loadPosts = async () => {
     console.log('HomeScreen: Loading posts (public endpoint)');
@@ -159,24 +160,36 @@ export default function HomeScreen() {
   };
 
   const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
-    // Prevent multiple simultaneous navigations
-    if (isNavigatingRef.current) {
-      console.log('HomeScreen: Navigation already in progress, ignoring tap');
+    const now = Date.now();
+    
+    // Prevent multiple rapid taps (debounce with 2 second window)
+    if (isNavigatingRef.current || (now - lastNavigationTimeRef.current < 2000)) {
+      console.log('HomeScreen: Navigation blocked - too soon after last navigation');
       return;
     }
 
     console.log('HomeScreen: Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
+    
     isNavigatingRef.current = true;
+    lastNavigationTimeRef.current = now;
 
-    router.push({
-      pathname: '/media-viewer',
-      params: { mediaUrl, mediaType },
-    });
+    try {
+      router.push({
+        pathname: '/media-viewer',
+        params: { 
+          url: mediaUrl,
+          type: mediaType,
+        },
+      });
+    } catch (error) {
+      console.error('HomeScreen: Navigation error', error);
+      isNavigatingRef.current = false;
+    }
 
-    // Reset the flag after a short delay
+    // Reset the navigation flag after navigation completes
     setTimeout(() => {
       isNavigatingRef.current = false;
-    }, 1000);
+    }, 2000);
   };
 
   const handleAuthModalClose = () => {
@@ -234,6 +247,7 @@ export default function HomeScreen() {
           <TouchableOpacity 
             activeOpacity={0.9}
             onPress={() => handleMediaPress(item.mediaUrl!, 'image')}
+            disabled={isNavigatingRef.current}
           >
             <Image
               source={resolveImageSource(item.mediaUrl)}
@@ -247,6 +261,7 @@ export default function HomeScreen() {
           <TouchableOpacity 
             activeOpacity={0.9}
             onPress={() => handleMediaPress(item.mediaUrl!, 'video')}
+            disabled={isNavigatingRef.current}
           >
             <Video
               source={{ uri: item.mediaUrl }}
