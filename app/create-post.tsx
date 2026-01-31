@@ -248,11 +248,12 @@ export default function CreatePostScreen() {
 
         <View style={styles.footer}>
           <Button
-            title={uploading ? uploadingText : canSubmitText}
             onPress={handleSubmit}
             disabled={!canSubmit || uploading}
             loading={uploading}
-          />
+          >
+            {uploading ? uploadingText : canSubmitText}
+          </Button>
         </View>
       </KeyboardAvoidingView>
 
