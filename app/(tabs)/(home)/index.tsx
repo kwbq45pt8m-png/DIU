@@ -49,7 +49,10 @@ export default function HomeScreen() {
     try {
       const { apiGet } = await import('@/utils/api');
       const response = await apiGet<Post[]>('/api/posts');
-      console.log('HomeScreen: Posts loaded from API', { count: response.length });
+      console.log('HomeScreen: Posts loaded from API', { 
+        count: response.length,
+        note: 'Backend generates fresh signed URLs on every fetch - media never expires!'
+      });
       setPosts(response);
     } catch (error) {
       console.error('HomeScreen: Error loading posts', error);

@@ -1,17 +1,27 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Button from '@/components/button';
 
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
+
 interface Post {
   id: string;
   content: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
   authorUsername: string;
   createdAt: string;
   likeCount: number;
@@ -47,6 +57,8 @@ export default function PostDetailScreen() {
   const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
+  const isNavigatingRef = useRef(false);
+  const lastNavigationTimeRef = useRef(0);
 
   const normalizeComment = (rawComment: any): Comment => {
     // Handle different response formats from backend
@@ -395,6 +407,39 @@ export default function PostDetailScreen() {
     router.push('/auth');
   };
 
+  const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
+    const now = Date.now();
+    
+    // Prevent multiple rapid taps (debounce with 2 second window)
+    if (isNavigatingRef.current || (now - lastNavigationTimeRef.current < 2000)) {
+      console.log('[PostDetail] Navigation blocked - too soon after last navigation');
+      return;
+    }
+
+    console.log('[PostDetail] Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
+    
+    isNavigatingRef.current = true;
+    lastNavigationTimeRef.current = now;
+
+    try {
+      router.push({
+        pathname: '/media-viewer',
+        params: { 
+          url: mediaUrl,
+          type: mediaType,
+        },
+      });
+    } catch (error) {
+      console.error('[PostDetail] Navigation error', error);
+      isNavigatingRef.current = false;
+    }
+
+    // Reset the navigation flag after navigation completes
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 2000);
+  };
+
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -606,7 +651,39 @@ export default function PostDetailScreen() {
                 <Text style={styles.timestamp}>{timeAgo}</Text>
               </View>
 
-              <Text style={styles.postContent}>{post.content}</Text>
+              {post.content ? (
+                <Text style={styles.postContent}>{post.content}</Text>
+              ) : null}
+
+              {post.mediaUrl && post.mediaType === 'image' ? (
+                <TouchableOpacity 
+                  activeOpacity={0.9}
+                  onPress={() => handleMediaPress(post.mediaUrl!, 'image')}
+                  disabled={isNavigatingRef.current}
+                >
+                  <Image
+                    source={resolveImageSource(post.mediaUrl)}
+                    style={styles.mediaImage}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
+              ) : null}
+
+              {post.mediaUrl && post.mediaType === 'video' ? (
+                <TouchableOpacity 
+                  activeOpacity={0.9}
+                  onPress={() => handleMediaPress(post.mediaUrl!, 'video')}
+                  disabled={isNavigatingRef.current}
+                >
+                  <Video
+                    source={{ uri: post.mediaUrl }}
+                    style={styles.mediaVideo}
+                    useNativeControls
+                    resizeMode={ResizeMode.CONTAIN}
+                    isLooping={false}
+                  />
+                </TouchableOpacity>
+              ) : null}
 
               <View style={styles.postActions}>
                 <TouchableOpacity 
@@ -850,6 +927,22 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 24,
     marginBottom: 16,
+  },
+  mediaImage: {
+    width: '100%',
+    aspectRatio: 1,
+    maxHeight: 400,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
+  },
+  mediaVideo: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    maxHeight: 400,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
   },
   postActions: {
     flexDirection: 'row',

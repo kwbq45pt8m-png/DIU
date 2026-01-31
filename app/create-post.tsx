@@ -84,7 +84,7 @@ export default function CreatePostScreen() {
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      let uploadedMediaUrl: string | undefined;
+      let uploadedMediaKey: string | undefined;
       let uploadedMediaType: 'image' | 'video' | undefined;
 
       // Step 1: Upload media if present
@@ -132,15 +132,26 @@ export default function CreatePostScreen() {
         }
 
         const uploadData = await uploadResponse.json();
-        uploadedMediaUrl = uploadData.url;
+        // Backend now returns: { url, mediaKey, mediaType }
+        // - url: signed URL for immediate preview
+        // - mediaKey: permanent storage key to store in database
+        // - mediaType: 'image' or 'video'
+        uploadedMediaKey = uploadData.mediaKey;
         uploadedMediaType = uploadData.mediaType;
-        console.log('CreatePost: Media uploaded successfully', { url: uploadedMediaUrl });
+        console.log('CreatePost: Media uploaded successfully', { 
+          mediaKey: uploadedMediaKey,
+          mediaType: uploadedMediaType,
+          previewUrl: uploadData.url 
+        });
       }
 
-      // Step 2: Create post
+      // Step 2: Create post with mediaKey (permanent storage key) instead of signed URL
+      // The backend will store this mediaKey and generate fresh signed URLs on every fetch
       console.log('CreatePost: Creating post with data', { 
         hasContent: !!content.trim(), 
-        hasMedia: !!uploadedMediaUrl 
+        hasMedia: !!uploadedMediaKey,
+        mediaKey: uploadedMediaKey,
+        note: 'Using mediaKey (permanent) instead of signed URL (temporary)'
       });
       const postData: any = {};
 
@@ -149,8 +160,8 @@ export default function CreatePostScreen() {
         postData.content = content.trim();
       }
 
-      if (uploadedMediaUrl) {
-        postData.mediaUrl = uploadedMediaUrl;
+      if (uploadedMediaKey) {
+        postData.mediaKey = uploadedMediaKey;
         postData.mediaType = uploadedMediaType;
       }
 
