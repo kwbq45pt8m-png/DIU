@@ -4,348 +4,285 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import Button from '@/components/button';
+import { colors } from '@/styles/commonStyles';
 import { useLanguage } from '@/contexts/LanguageContext';
+import Button from '@/components/button';
 
 export default function CreatePostScreen() {
-  const [content, setContent] = useState('');
-  const [mediaUri, setMediaUri] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+  const [postContent, setPostContent] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState<{
+    uri: string;
+    type: 'image';
+    fileName?: string;
+  } | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [showAdModal, setShowAdModal] = useState(false);
-  const [adCountdown, setAdCountdown] = useState(10);
+  const [adCountdown, setAdCountdown] = useState(5);
   const router = useRouter();
   const { t } = useLanguage();
 
-  // Ad countdown timer
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let interval: NodeJS.Timeout;
     if (showAdModal && adCountdown > 0) {
-      timer = setTimeout(() => {
-        setAdCountdown(adCountdown - 1);
+      interval = setInterval(() => {
+        setAdCountdown(prev => prev - 1);
       }, 1000);
     }
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
+    return () => clearInterval(interval);
   }, [showAdModal, adCountdown]);
 
   const pickImage = async () => {
-    console.log('CreatePost: Pick image button pressed');
+    console.log('[CreatePost] Opening image picker');
     
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (!permissionResult.granted) {
-      setErrorModal({ visible: true, message: t('mediaPermissionError') });
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('[CreatePost] Media library permission denied');
+      alert(t('permissionDenied') || 'Permission to access media library was denied');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
+      mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      console.log('CreatePost: Media selected', { type: result.assets[0].type });
-      setMediaUri(result.assets[0].uri);
-      setMediaType(result.assets[0].type === 'video' ? 'video' : 'image');
+      const asset = result.assets[0];
+      console.log('[CreatePost] Image selected', { 
+        uri: asset.uri,
+        fileName: asset.fileName,
+        fileSize: asset.fileSize 
+      });
+      
+      // Validate file size before setting (10MB max for images)
+      const maxSize = 10 * 1024 * 1024;
+      
+      if (asset.fileSize && asset.fileSize > maxSize) {
+        const sizeInMB = (asset.fileSize / (1024 * 1024)).toFixed(1);
+        alert(t('imageTooLarge') || `Image file is too large (${sizeInMB}MB). Maximum size is 10MB.`);
+        return;
+      }
+      
+      setSelectedMedia({
+        uri: asset.uri,
+        type: 'image',
+        fileName: asset.fileName,
+      });
     }
   };
 
   const removeMedia = () => {
-    console.log('CreatePost: Remove media button pressed');
-    setMediaUri(null);
-    setMediaType(null);
+    console.log('[CreatePost] Removing selected image');
+    setSelectedMedia(null);
   };
 
   const handleSubmit = async () => {
-    console.log('CreatePost: Submit button pressed', { hasContent: !!content, hasMedia: !!mediaUri });
+    const trimmedContent = postContent.trim();
     
-    if (!content.trim() && !mediaUri) {
-      console.log('CreatePost: Validation failed - empty content');
-      setErrorModal({ visible: true, message: t('postEmptyError') });
+    if (!trimmedContent && !selectedMedia) {
+      console.log('[CreatePost] Empty post, ignoring');
       return;
     }
 
-    // Show ad modal before posting
-    console.log('CreatePost: Showing ad modal');
+    console.log('[CreatePost] Showing ad modal before posting');
     setShowAdModal(true);
-    setAdCountdown(10);
+    setAdCountdown(5);
   };
 
   const finishPost = async () => {
-    console.log('CreatePost: Finishing post after ad');
+    console.log('[CreatePost] Finishing post after ad');
     setShowAdModal(false);
-    setLoading(true);
+    setUploading(true);
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      let uploadedMediaKey: string | undefined;
-      let uploadedMediaType: 'image' | 'video' | undefined;
+      
+      let mediaKey: string | undefined;
+      let mediaType: 'image' | undefined;
 
-      // Step 1: Upload media if present
-      if (mediaUri && mediaType) {
-        console.log('CreatePost: Uploading media', { mediaType, uri: mediaUri });
+      // Upload image if selected
+      if (selectedMedia) {
+        console.log('[CreatePost] Uploading image');
         
-        // Create FormData for media upload
         const formData = new FormData();
-        const filename = mediaUri.split('/').pop() || 'media';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `${mediaType}/${match[1]}` : mediaType;
-        
         formData.append('media', {
-          uri: mediaUri,
-          name: filename,
-          type,
+          uri: selectedMedia.uri,
+          name: selectedMedia.fileName || 'upload.jpg',
+          type: 'image/jpeg',
         } as any);
 
-        // Upload media
-        const { BACKEND_URL } = await import('@/utils/api');
-        const { getBearerToken } = await import('@/utils/api');
-        const token = await getBearerToken();
-        
-        console.log('CreatePost: Uploading to', `${BACKEND_URL}/api/upload/media`);
-        const uploadResponse = await fetch(`${BACKEND_URL}/api/upload/media`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        });
-
-        if (!uploadResponse.ok) {
-          const errorText = await uploadResponse.text();
-          console.error('CreatePost: Media upload failed', { status: uploadResponse.status, error: errorText });
-          
-          // Handle specific error cases
-          if (uploadResponse.status === 413) {
-            throw new Error('File is too large. Maximum size is 100MB.');
-          } else if (uploadResponse.status === 400) {
-            throw new Error('Invalid file format. Please select a valid image or video.');
-          } else {
-            throw new Error('Failed to upload media. Please try again.');
+        const uploadResponse = await authenticatedPost<{ url: string; mediaKey: string; mediaType: 'image' | 'video' }>(
+          '/api/upload/media',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
           }
-        }
+        );
 
-        const uploadData = await uploadResponse.json();
-        // Backend now returns: { url, mediaKey, mediaType }
-        // - url: signed URL for immediate preview
-        // - mediaKey: permanent storage key to store in database
-        // - mediaType: 'image' or 'video'
-        uploadedMediaKey = uploadData.mediaKey;
-        uploadedMediaType = uploadData.mediaType;
-        console.log('CreatePost: Media uploaded successfully', { 
-          mediaKey: uploadedMediaKey,
-          mediaType: uploadedMediaType,
-          previewUrl: uploadData.url 
-        });
+        console.log('[CreatePost] Image uploaded successfully', { mediaKey: uploadResponse.mediaKey });
+        mediaKey = uploadResponse.mediaKey;
+        mediaType = 'image';
       }
 
-      // Step 2: Create post with mediaKey (permanent storage key) instead of signed URL
-      // The backend will store this mediaKey and generate fresh signed URLs on every fetch
-      console.log('CreatePost: Creating post with data', { 
-        hasContent: !!content.trim(), 
-        hasMedia: !!uploadedMediaKey,
-        mediaKey: uploadedMediaKey,
-        note: 'Using mediaKey (permanent) instead of signed URL (temporary)'
-      });
-      const postData: any = {};
+      // Create post with mediaKey (not mediaUrl)
+      const postData: { content: string; mediaKey?: string; mediaType?: 'image' } = {
+        content: postContent.trim(),
+      };
 
-      // Only add content if it's not empty
-      if (content.trim()) {
-        postData.content = content.trim();
+      if (mediaKey && mediaType) {
+        postData.mediaKey = mediaKey;
+        postData.mediaType = mediaType;
       }
 
-      if (uploadedMediaKey) {
-        postData.mediaKey = uploadedMediaKey;
-        postData.mediaType = uploadedMediaType;
-      }
-
-      const result = await authenticatedPost('/api/posts', postData);
-      console.log('CreatePost: Post created successfully', result);
+      console.log('[CreatePost] Creating post', postData);
+      await authenticatedPost('/api/posts', postData);
       
-      setLoading(false);
-      console.log('CreatePost: Navigating back to home');
+      console.log('[CreatePost] Post created successfully');
       router.back();
     } catch (error: any) {
-      console.error('CreatePost: Error creating post', { 
-        error: error.message, 
-        stack: error.stack,
-        response: error.response 
-      });
-      setLoading(false);
+      console.error('[CreatePost] Error creating post', error);
       
-      // Show specific error message if available
-      const errorMessage = error.message || t('postError');
-      setErrorModal({ visible: true, message: errorMessage });
+      // Handle specific error cases
+      let errorMessage = t('postFailed') || 'Failed to create post. Please try again.';
+      
+      if (error.status === 413) {
+        errorMessage = t('fileTooLarge') || 'File is too large. Images must be under 10MB.';
+      } else if (error.status === 400) {
+        // Try to parse the error message from the backend
+        try {
+          const errorData = JSON.parse(error.response);
+          errorMessage = errorData.message || t('invalidFileFormat') || 'Invalid file format. Please select a valid image.';
+        } catch {
+          errorMessage = t('invalidFileFormat') || 'Invalid file format. Please select a valid image.';
+        }
+      } else if (error.message && error.message.includes('Authentication token')) {
+        errorMessage = t('authRequired') || 'Please sign in to create a post.';
+      }
+      
+      alert(errorMessage);
+    } finally {
+      setUploading(false);
     }
   };
 
-  const canSkipAd = adCountdown === 0;
+  const canSubmitText = postContent.trim() || selectedMedia ? t('post') : t('postEmpty');
+  const canSubmit = !!(postContent.trim() || selectedMedia);
+  const adTitleText = t('adTitle');
+  const adMessageText = t('adMessage');
+  const adCountdownText = adCountdown > 0 ? `${adCountdown}s` : t('continue');
+  const postPlaceholderText = t('postPlaceholder');
+  const addMediaText = t('addImage');
+  const uploadingText = t('uploading');
 
   return (
-    <>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen 
-        options={{
-          headerShown: true,
+        options={{ 
           title: t('createPost'),
-          headerStyle: { backgroundColor: colors.backgroundAlt },
-          headerTintColor: colors.text,
-        }}
+          headerShown: true,
+          headerBackVisible: true,
+          headerBackTitle: 'Back',
+        }} 
       />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-        >
-          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder={t('postPlaceholder')}
-                placeholderTextColor={colors.textSecondary}
-                value={content}
-                onChangeText={setContent}
-                multiline
-                maxLength={500}
-                autoFocus
-              />
-              <Text style={styles.charCount}>
-                {content.length}/500
-              </Text>
-            </View>
 
-            {mediaUri && (
-              <View style={styles.mediaPreview}>
-                {mediaType === 'image' && (
-                  <Image source={{ uri: mediaUri }} style={styles.previewImage} />
-                )}
-                {mediaType === 'video' && (
-                  <View style={styles.videoPlaceholder}>
-                    <IconSymbol
-                      ios_icon_name="play.circle.fill"
-                      android_material_icon_name="play-circle-filled"
-                      size={48}
-                      color={colors.text}
-                    />
-                    <Text style={styles.videoText}>{t('videoSelected')}</Text>
-                  </View>
-                )}
-                <TouchableOpacity style={styles.removeButton} onPress={removeMedia}>
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="cancel"
-                    size={24}
-                    color={colors.text}
-                  />
-                </TouchableOpacity>
-              </View>
-            )}
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <TextInput
+            style={styles.input}
+            placeholder={postPlaceholderText}
+            placeholderTextColor={colors.textSecondary}
+            value={postContent}
+            onChangeText={setPostContent}
+            multiline
+            maxLength={500}
+            textAlignVertical="top"
+          />
 
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.mediaButton} onPress={pickImage}>
+          {selectedMedia && (
+            <View style={styles.mediaPreview}>
+              <Image source={{ uri: selectedMedia.uri }} style={styles.previewImage} />
+              <TouchableOpacity style={styles.removeButton} onPress={removeMedia}>
                 <IconSymbol
-                  ios_icon_name="photo"
-                  android_material_icon_name="image"
-                  size={24}
-                  color={colors.text}
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={32}
+                  color="#FF3B30"
                 />
-                <Text style={styles.mediaButtonText}>{t('addPhotoVideo')}</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          )}
 
-          <View style={styles.footer}>
-            <Button
-              onPress={handleSubmit}
-              variant="filled"
-              size="lg"
-              loading={loading}
-              disabled={loading || (!content.trim() && !mediaUri)}
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.mediaButton} onPress={pickImage}>
+              <IconSymbol
+                ios_icon_name="photo"
+                android_material_icon_name="image"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={styles.mediaButtonText}>{addMediaText}</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.helperText}>
+              {t('imageLimits') || 'Images: 10MB max'}
+            </Text>
+          </View>
+
+          <View style={styles.characterCount}>
+            <Text style={styles.characterCountText}>
+              {postContent.length}/500
+            </Text>
+          </View>
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <Button
+            title={uploading ? uploadingText : canSubmitText}
+            onPress={handleSubmit}
+            disabled={!canSubmit || uploading}
+            loading={uploading}
+          />
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* Ad Modal */}
+      <Modal
+        visible={showAdModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{adTitleText}</Text>
+            <Text style={styles.modalMessage}>{adMessageText}</Text>
+            
+            <View style={styles.adPlaceholder}>
+              <Text style={styles.adText}>📢 {t('adSpace')}</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.continueButton, adCountdown > 0 && styles.continueButtonDisabled]}
+              onPress={finishPost}
+              disabled={adCountdown > 0}
             >
-              {t('post')}
-            </Button>
+              {adCountdown > 0 ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : null}
+              <Text style={styles.continueButtonText}>{adCountdownText}</Text>
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-
-        {/* Ad Modal */}
-        <Modal
-          visible={showAdModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
-            if (canSkipAd) {
-              setShowAdModal(false);
-            }
-          }}
-        >
-          <View style={styles.adModalOverlay}>
-            <View style={styles.adModalContent}>
-              <View style={styles.adHeader}>
-                <Text style={styles.adTitle}>{t('adTitle')}</Text>
-                <Text style={styles.adSubtitle}>{t('adSubtitle')}</Text>
-              </View>
-
-              <View style={styles.adBody}>
-                <View style={styles.adPlaceholder}>
-                  <IconSymbol
-                    ios_icon_name="play.circle.fill"
-                    android_material_icon_name="play-circle-filled"
-                    size={64}
-                    color={colors.textSecondary}
-                  />
-                  <Text style={styles.adPlaceholderText}>{t('adContent')}</Text>
-                </View>
-              </View>
-
-              <View style={styles.adFooter}>
-                {!canSkipAd ? (
-                  <View style={styles.countdownContainer}>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.countdownText}>
-                      {t('adWait')} {adCountdown}s
-                    </Text>
-                  </View>
-                ) : (
-                  <Button
-                    onPress={finishPost}
-                    variant="filled"
-                    size="lg"
-                  >
-                    {t('adContinue')}
-                  </Button>
-                )}
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Error Modal */}
-        <Modal
-          visible={errorModal.visible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>{t('error')}</Text>
-              <Text style={styles.modalText}>{errorModal.message}</Text>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={() => setErrorModal({ visible: false, message: '' })}
-              >
-                <Text style={styles.modalButtonText}>{t('ok')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      </SafeAreaView>
-    </>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -354,156 +291,80 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  keyboardView: {
-    flex: 1,
-  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
   },
-  inputContainer: {
-    marginBottom: 16,
-  },
   input: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 16,
     fontSize: 16,
     color: colors.text,
-    minHeight: 150,
+    minHeight: 200,
     textAlignVertical: 'top',
-  },
-  charCount: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    textAlign: 'right',
-    marginTop: 8,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   mediaPreview: {
-    marginBottom: 16,
+    marginTop: 16,
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
   },
   previewImage: {
     width: '100%',
-    height: 200,
-    borderRadius: 12,
-  },
-  videoPlaceholder: {
-    width: '100%',
-    height: 200,
-    backgroundColor: colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 12,
-  },
-  videoText: {
-    fontSize: 14,
-    color: colors.text,
-    marginTop: 8,
+    aspectRatio: 1,
+    backgroundColor: colors.background,
   },
   removeButton: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 12,
+    top: 12,
+    right: 12,
   },
   actions: {
-    marginBottom: 16,
+    marginTop: 16,
+    gap: 8,
   },
   mediaButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    padding: 12,
     backgroundColor: colors.card,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: 16,
   },
   mediaButtonText: {
     fontSize: 16,
-    color: colors.text,
-    fontWeight: '500',
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    paddingHorizontal: 4,
+  },
+  characterCount: {
+    marginTop: 16,
+    alignItems: 'flex-end',
+  },
+  characterCountText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   footer: {
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  adModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  adModalContent: {
     backgroundColor: colors.card,
-    borderRadius: 20,
-    width: '100%',
-    maxWidth: 400,
-    overflow: 'hidden',
-  },
-  adHeader: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  adTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  adSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  adBody: {
-    padding: 20,
-  },
-  adPlaceholder: {
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 200,
-  },
-  adPlaceholderText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  adFooter: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  countdownContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  countdownText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -514,6 +375,8 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalTitle: {
     fontSize: 20,
@@ -522,22 +385,43 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  modalText: {
-    fontSize: 14,
+  modalMessage: {
+    fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  modalButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
+  adPlaceholder: {
+    height: 200,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
   },
-  modalButtonText: {
+  adText: {
+    fontSize: 18,
+    color: colors.textSecondary,
+  },
+  continueButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  continueButtonDisabled: {
+    opacity: 0.5,
+  },
+  continueButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

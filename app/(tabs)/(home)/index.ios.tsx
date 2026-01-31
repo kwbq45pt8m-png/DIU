@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -38,9 +38,6 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
-  const isNavigatingRef = useRef(false);
-  const lastNavigationTimeRef = useRef(0);
-  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadPosts = async () => {
     console.log('HomeScreen: Loading posts (public endpoint)');
@@ -49,7 +46,10 @@ export default function HomeScreen() {
     try {
       const { apiGet } = await import('@/utils/api');
       const response = await apiGet<Post[]>('/api/posts');
-      console.log('HomeScreen: Posts loaded from API', { count: response.length });
+      console.log('HomeScreen: Posts loaded from API', { 
+        count: response.length,
+        note: 'Backend generates fresh signed URLs on every fetch - media never expires!'
+      });
       setPosts(response);
     } catch (error) {
       console.error('HomeScreen: Error loading posts', error);
@@ -68,13 +68,6 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadPosts();
-    
-    // Cleanup timeout on unmount
-    return () => {
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-      }
-    };
   }, []);
 
   const handleLike = async (postId: string) => {
@@ -167,51 +160,6 @@ export default function HomeScreen() {
     router.push('/create-post');
   };
 
-  const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
-    const now = Date.now();
-    
-    // Strong debounce: prevent multiple rapid taps (3 second window)
-    if (isNavigatingRef.current) {
-      console.log('HomeScreen: Navigation blocked - already navigating');
-      return;
-    }
-    
-    if (now - lastNavigationTimeRef.current < 3000) {
-      console.log('HomeScreen: Navigation blocked - too soon after last navigation');
-      return;
-    }
-
-    console.log('HomeScreen: Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
-    
-    // Set navigation flag immediately
-    isNavigatingRef.current = true;
-    lastNavigationTimeRef.current = now;
-
-    // Clear any existing timeout
-    if (navigationTimeoutRef.current) {
-      clearTimeout(navigationTimeoutRef.current);
-    }
-
-    try {
-      router.push({
-        pathname: '/media-viewer',
-        params: { 
-          url: mediaUrl,
-          type: mediaType,
-        },
-      });
-    } catch (error) {
-      console.error('HomeScreen: Navigation error', error);
-      isNavigatingRef.current = false;
-    }
-
-    // Reset the navigation flag after a longer delay
-    navigationTimeoutRef.current = setTimeout(() => {
-      isNavigatingRef.current = false;
-      console.log('HomeScreen: Navigation flag reset');
-    }, 3000);
-  };
-
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
   };
@@ -264,33 +212,21 @@ export default function HomeScreen() {
         ) : null}
 
         {item.mediaUrl && item.mediaType === 'image' ? (
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            onPress={() => handleMediaPress(item.mediaUrl!, 'image')}
-            disabled={isNavigatingRef.current}
-          >
-            <Image
-              source={resolveImageSource(item.mediaUrl)}
-              style={styles.mediaImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          <Image
+            source={resolveImageSource(item.mediaUrl)}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
         ) : null}
 
         {item.mediaUrl && item.mediaType === 'video' ? (
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            onPress={() => handleMediaPress(item.mediaUrl!, 'video')}
-            disabled={isNavigatingRef.current}
-          >
-            <Video
-              source={{ uri: item.mediaUrl }}
-              style={styles.mediaVideo}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
-              isLooping={false}
-            />
-          </TouchableOpacity>
+          <Video
+            source={{ uri: item.mediaUrl }}
+            style={styles.mediaVideo}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+          />
         ) : null}
 
         <View style={styles.postActions}>

@@ -168,13 +168,52 @@ export const authenticatedApiCall = async <T = any>(
     throw new Error("Authentication token not found. Please sign in.");
   }
 
-  return apiCall<T>(endpoint, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  if (!isBackendConfigured()) {
+    throw new Error("Backend URL not configured. Please rebuild the app.");
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
+  console.log("[API] Authenticated call:", url, options?.method || "GET");
+
+  try {
+    const isFormData = options?.body instanceof FormData;
+    
+    const fetchOptions: RequestInit = {
+      ...options,
+      headers: {
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...options?.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    };
+
+    console.log("[API] Fetch options:", { 
+      method: fetchOptions.method,
+      hasBody: !!fetchOptions.body,
+      isFormData,
+      headers: fetchOptions.headers 
+    });
+
+    const response = await fetch(url, fetchOptions);
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("[API] Error response:", response.status, text);
+      
+      // Create error object with status for better error handling
+      const error: any = new Error(`API error: ${response.status} - ${text}`);
+      error.status = response.status;
+      error.response = text;
+      throw error;
+    }
+
+    const data = await response.json();
+    console.log("[API] Success:", data);
+    return data;
+  } catch (error) {
+    console.error("[API] Authenticated request failed:", error);
+    throw error;
+  }
 };
 
 /**
@@ -186,14 +225,23 @@ export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> =>
 
 /**
  * Authenticated POST request
+ * Supports both JSON and FormData
  */
 export const authenticatedPost = async <T = any>(
   endpoint: string,
-  data: any
+  data: any,
+  options?: RequestInit
 ): Promise<T> => {
+  const isFormData = data instanceof FormData;
+  
   return authenticatedApiCall<T>(endpoint, {
     method: "POST",
-    body: JSON.stringify(data),
+    body: isFormData ? data : JSON.stringify(data),
+    ...options,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...options?.headers,
+    },
   });
 };
 

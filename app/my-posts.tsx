@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
@@ -43,8 +43,6 @@ export default function MyPostsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
-  const isNavigatingRef = useRef(false);
-  const lastNavigationTimeRef = useRef(0);
 
   const loadMyPosts = async () => {
     console.log('[MyPosts] Loading user posts');
@@ -145,39 +143,6 @@ export default function MyPostsScreen() {
     console.log('[MyPosts] Delete button pressed', { postId: post.id });
     setSelectedPost(post);
     setDeleteModalVisible(true);
-  };
-
-  const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
-    const now = Date.now();
-    
-    // Prevent multiple rapid taps (debounce with 2 second window)
-    if (isNavigatingRef.current || (now - lastNavigationTimeRef.current < 2000)) {
-      console.log('[MyPosts] Navigation blocked - too soon after last navigation');
-      return;
-    }
-
-    console.log('[MyPosts] Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
-    
-    isNavigatingRef.current = true;
-    lastNavigationTimeRef.current = now;
-
-    try {
-      router.push({
-        pathname: '/media-viewer',
-        params: { 
-          url: mediaUrl,
-          type: mediaType,
-        },
-      });
-    } catch (error) {
-      console.error('[MyPosts] Navigation error', error);
-      isNavigatingRef.current = false;
-    }
-
-    // Reset the navigation flag after navigation completes
-    setTimeout(() => {
-      isNavigatingRef.current = false;
-    }, 2000);
   };
 
   const handleUpdatePost = async (postId: string, content: string) => {
@@ -297,33 +262,21 @@ export default function MyPostsScreen() {
         ) : null}
 
         {mediaUrl && mediaType === 'image' ? (
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            onPress={() => handleMediaPress(mediaUrl, 'image')}
-            disabled={isNavigatingRef.current}
-          >
-            <Image
-              source={resolveImageSource(mediaUrl)}
-              style={styles.mediaImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          <Image
+            source={resolveImageSource(mediaUrl)}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
         ) : null}
 
         {mediaUrl && mediaType === 'video' ? (
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            onPress={() => handleMediaPress(mediaUrl, 'video')}
-            disabled={isNavigatingRef.current}
-          >
-            <Video
-              source={{ uri: mediaUrl }}
-              style={styles.mediaVideo}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
-              isLooping={false}
-            />
-          </TouchableOpacity>
+          <Video
+            source={{ uri: mediaUrl }}
+            style={styles.mediaVideo}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+          />
         ) : null}
 
         <View style={styles.postActions}>
@@ -367,7 +320,7 @@ export default function MyPostsScreen() {
             title: t('myPosts'),
             headerShown: true,
             headerBackVisible: true,
-            headerBackTitle: 'Back'
+            headerBackTitle: 'Back',
           }} 
         />
         <View style={styles.loadingContainer}>
@@ -385,7 +338,7 @@ export default function MyPostsScreen() {
           title: t('myPosts'),
           headerShown: true,
           headerBackVisible: true,
-          headerBackTitle: 'Back'
+          headerBackTitle: 'Back',
         }} 
       />
 
