@@ -6,6 +6,7 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Button from '@/components/button';
 
 interface Post {
@@ -23,18 +24,71 @@ interface Comment {
   content: string;
   authorUsername: string;
   createdAt: string;
+  parentCommentId?: string;
+  replies?: Comment[];
 }
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const normalizeComment = (rawComment: any): Comment => {
+    // Handle different response formats from backend
+    return {
+      id: rawComment.id,
+      content: rawComment.content,
+      authorUsername: rawComment.authorUsername || rawComment.user?.username || rawComment.user?.email?.split('@')[0] || 'Anonymous',
+      createdAt: rawComment.createdAt,
+      parentCommentId: rawComment.parentCommentId,
+      replies: rawComment.replies || [],
+    };
+  };
+
+  const buildNestedComments = (flatComments: any[]): Comment[] => {
+    // Normalize all comments first
+    const normalizedComments = flatComments.map(normalizeComment);
+    
+    // Create a map of comments by ID for quick lookup
+    const commentMap = new Map<string, Comment>();
+    const rootComments: Comment[] = [];
+
+    // First pass: Create comment objects with empty replies arrays
+    normalizedComments.forEach(comment => {
+      commentMap.set(comment.id, { ...comment, replies: [] });
+    });
+
+    // Second pass: Build the tree structure
+    normalizedComments.forEach(comment => {
+      const commentWithReplies = commentMap.get(comment.id)!;
+      
+      if (comment.parentCommentId) {
+        // This is a reply, add it to parent's replies array
+        const parent = commentMap.get(comment.parentCommentId);
+        if (parent) {
+          parent.replies = parent.replies || [];
+          parent.replies.push(commentWithReplies);
+        } else {
+          // Parent not found, treat as root comment
+          rootComments.push(commentWithReplies);
+        }
+      } else {
+        // This is a root comment
+        rootComments.push(commentWithReplies);
+      }
+    });
+
+    return rootComments;
+  };
 
   const loadPostAndComments = async () => {
     console.log('PostDetailScreen: Loading post and comments', { postId: id });
@@ -49,9 +103,27 @@ export default function PostDetailScreen() {
       setPost(postData);
 
       // Load comments (public endpoint)
-      const commentsData = await apiGet<Comment[]>(`/api/posts/${id}/comments`);
-      console.log('PostDetailScreen: Comments loaded', { count: commentsData.length });
-      setComments(commentsData);
+      const commentsData = await apiGet<any[]>(`/api/posts/${id}/comments`);
+      console.log('PostDetailScreen: Comments loaded (raw)', { count: commentsData.length });
+      
+      // Check if comments are already nested (have replies array populated) or flat
+      const hasNestedStructure = commentsData.some(c => c.replies && Array.isArray(c.replies) && c.replies.length > 0);
+      
+      if (hasNestedStructure) {
+        // Backend already returns nested structure - just normalize
+        console.log('PostDetailScreen: Using nested comments from backend');
+        const normalized = commentsData.map(c => ({
+          ...normalizeComment(c),
+          replies: c.replies?.map(normalizeComment) || [],
+        }));
+        setComments(normalized);
+      } else {
+        // Transform flat comments into nested structure
+        console.log('PostDetailScreen: Building nested structure from flat comments');
+        const nestedComments = buildNestedComments(commentsData);
+        console.log('PostDetailScreen: Nested comments built', { rootCount: nestedComments.length });
+        setComments(nestedComments);
+      }
     } catch (error) {
       console.error('PostDetailScreen: Error loading data', error);
     } finally {
@@ -108,7 +180,7 @@ export default function PostDetailScreen() {
   };
 
   const handleSubmitComment = async () => {
-    console.log('PostDetailScreen: Submit comment pressed', { authenticated: !!user });
+    console.log('PostDetailScreen: Submit comment pressed', { authenticated: !!user, replyingTo: replyingTo?.id });
     
     if (!user) {
       console.log('PostDetailScreen: User not authenticated, showing auth modal');
@@ -122,27 +194,57 @@ export default function PostDetailScreen() {
       return;
     }
 
-    console.log('PostDetailScreen: Submitting comment', { content: trimmedComment });
+    console.log('PostDetailScreen: Submitting comment', { content: trimmedComment, parentCommentId: replyingTo?.id });
     setSubmitting(true);
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      const newComment = await authenticatedPost<Comment>(
+      const payload: { content: string; parentCommentId?: string } = { content: trimmedComment };
+      
+      // Add parentCommentId if replying to a comment
+      if (replyingTo) {
+        payload.parentCommentId = replyingTo.id;
+      }
+      
+      const newComment = await authenticatedPost<any>(
         `/api/posts/${id}/comments`,
-        { content: trimmedComment }
+        payload
       );
       
       console.log('PostDetailScreen: Comment submitted successfully', newComment);
-      setComments(prev => [newComment, ...prev]);
+      
+      // Reload comments to get updated nested structure
+      await loadPostAndComments();
+      
       setCommentText('');
+      setReplyingTo(null);
       
       // Update comment count
       setPost(prev => prev ? { ...prev, commentCount: prev.commentCount + 1 } : null);
     } catch (error) {
       console.error('PostDetailScreen: Error submitting comment', error);
+      setErrorMessage('Failed to post comment. Please try again.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleReplyPress = (comment: Comment) => {
+    console.log('PostDetailScreen: Reply button pressed', { commentId: comment.id, authenticated: !!user });
+    
+    if (!user) {
+      console.log('PostDetailScreen: User not authenticated, showing auth modal');
+      setShowAuthModal(true);
+      return;
+    }
+    
+    setReplyingTo(comment);
+  };
+
+  const handleCancelReply = () => {
+    console.log('PostDetailScreen: Cancel reply pressed');
+    setReplyingTo(null);
+    setCommentText('');
   };
 
   const handleAuthModalClose = () => {
@@ -159,24 +261,57 @@ export default function PostDetailScreen() {
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (seconds < 60) return 'Just now';
+    if (seconds < 60) {
+      const justNowText = t('justNow');
+      return justNowText;
+    }
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
-      const minuteText = minutes === 1 ? 'minute' : 'minutes';
-      return `${minutes} ${minuteText} ago`;
+      const minuteText = minutes === 1 ? t('minuteAgo') : t('minutesAgo');
+      return `${minutes} ${minuteText}`;
     }
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
-      const hourText = hours === 1 ? 'hour' : 'hours';
-      return `${hours} ${hourText} ago`;
+      const hourText = hours === 1 ? t('hourAgo') : t('hoursAgo');
+      return `${hours} ${hourText}`;
     }
     const days = Math.floor(hours / 24);
-    const dayText = days === 1 ? 'day' : 'days';
-    return `${days} ${dayText} ago`;
+    const dayText = days === 1 ? t('dayAgo') : t('daysAgo');
+    return `${days} ${dayText}`;
+  };
+
+  const renderReply = (reply: Comment, isLast: boolean) => {
+    const timeAgo = formatTimeAgo(reply.createdAt);
+    
+    return (
+      <View key={reply.id} style={[styles.replyCard, isLast && styles.replyCardLast]}>
+        <View style={styles.replyIndicator} />
+        <View style={styles.replyContent}>
+          <View style={styles.commentHeader}>
+            <Text style={styles.commentUsername}>@{reply.authorUsername}</Text>
+            <Text style={styles.commentTimestamp}>{timeAgo}</Text>
+          </View>
+          <Text style={styles.commentContent}>{reply.content}</Text>
+          <TouchableOpacity 
+            style={styles.replyButton}
+            onPress={() => handleReplyPress(reply)}
+          >
+            <IconSymbol
+              ios_icon_name="arrowshape.turn.up.left"
+              android_material_icon_name="reply"
+              size={14}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.replyButtonText}>{t('reply')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   const renderComment = ({ item }: { item: Comment }) => {
     const timeAgo = formatTimeAgo(item.createdAt);
+    const hasReplies = item.replies && item.replies.length > 0;
     
     return (
       <View style={styles.commentCard}>
@@ -185,6 +320,26 @@ export default function PostDetailScreen() {
           <Text style={styles.commentTimestamp}>{timeAgo}</Text>
         </View>
         <Text style={styles.commentContent}>{item.content}</Text>
+        <TouchableOpacity 
+          style={styles.replyButton}
+          onPress={() => handleReplyPress(item)}
+        >
+          <IconSymbol
+            ios_icon_name="arrowshape.turn.up.left"
+            android_material_icon_name="reply"
+            size={14}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.replyButtonText}>{t('reply')}</Text>
+        </TouchableOpacity>
+        
+        {hasReplies && (
+          <View style={styles.repliesContainer}>
+            {item.replies!.map((reply, index) => 
+              renderReply(reply, index === item.replies!.length - 1)
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -198,15 +353,22 @@ export default function PostDetailScreen() {
   }
 
   if (!post) {
+    const postNotFoundText = t('postNotFound');
+    
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Post not found</Text>
+        <Text style={styles.errorText}>{postNotFoundText}</Text>
       </View>
     );
   }
 
   const timeAgo = formatTimeAgo(post.createdAt);
   const likeIconName = post.hasLiked ? 'favorite' : 'favorite-border';
+  const commentsTitleText = t('comments');
+  const noCommentsText = t('noComments');
+  const beFirstToCommentText = t('beFirstToComment');
+  const addCommentPlaceholder = user ? t('addComment') : t('signInToCommentPlaceholder');
+  const replyingToText = replyingTo ? `${t('replyTo').replace('{username}', replyingTo.authorUsername)}` : '';
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -258,50 +420,73 @@ export default function PostDetailScreen() {
               </View>
 
               <View style={styles.divider} />
-              <Text style={styles.commentsTitle}>Comments</Text>
+              <Text style={styles.commentsTitle}>{commentsTitleText}</Text>
             </View>
           }
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No comments yet</Text>
-              <Text style={styles.emptySubtext}>Be the first to comment!</Text>
+              <Text style={styles.emptyText}>{noCommentsText}</Text>
+              <Text style={styles.emptySubtext}>{beFirstToCommentText}</Text>
             </View>
           }
         />
 
         <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder={user ? "Add a comment..." : "Sign in to comment"}
-            placeholderTextColor={colors.textSecondary}
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={500}
-            editable={!!user}
-            onFocus={() => {
-              if (!user) {
-                setShowAuthModal(true);
-              }
-            }}
-          />
-          <TouchableOpacity 
-            style={[styles.sendButton, (!commentText.trim() || submitting) && styles.sendButtonDisabled]}
-            onPress={handleSubmitComment}
-            disabled={!commentText.trim() || submitting}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <IconSymbol
-                ios_icon_name="paperplane.fill"
-                android_material_icon_name="send"
-                size={20}
-                color="#FFFFFF"
-              />
-            )}
-          </TouchableOpacity>
+          {replyingTo && (
+            <View style={styles.replyingToBar}>
+              <View style={styles.replyingToContent}>
+                <IconSymbol
+                  ios_icon_name="arrowshape.turn.up.left"
+                  android_material_icon_name="reply"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.replyingToText}>{replyingToText}</Text>
+              </View>
+              <TouchableOpacity onPress={handleCancelReply}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder={addCommentPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={500}
+              editable={!!user}
+              onFocus={() => {
+                if (!user) {
+                  setShowAuthModal(true);
+                }
+              }}
+            />
+            <TouchableOpacity 
+              style={[styles.sendButton, (!commentText.trim() || submitting) && styles.sendButtonDisabled]}
+              onPress={handleSubmitComment}
+              disabled={!commentText.trim() || submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol
+                  ios_icon_name="paperplane.fill"
+                  android_material_icon_name="send"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
 
@@ -314,9 +499,9 @@ export default function PostDetailScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Sign in to comment</Text>
+            <Text style={styles.modalTitle}>{t('signInToCommentTitle')}</Text>
             <Text style={styles.modalMessage}>
-              Create an account or sign in to join the conversation
+              {t('signInToCommentMessage')}
             </Text>
             
             <View style={styles.modalButtons}>
@@ -324,16 +509,38 @@ export default function PostDetailScreen() {
                 style={styles.modalButtonPrimary}
                 onPress={handleGoToAuth}
               >
-                <Text style={styles.modalButtonTextPrimary}>Sign In</Text>
+                <Text style={styles.modalButtonTextPrimary}>{t('signIn')}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.modalButtonSecondary}
                 onPress={handleAuthModalClose}
               >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <Text style={styles.modalButtonTextSecondary}>{t('cancel')}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        visible={!!errorMessage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorMessage(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('error')}</Text>
+            <Text style={styles.modalMessage}>{errorMessage}</Text>
+            
+            <TouchableOpacity 
+              style={styles.modalButtonPrimary}
+              onPress={() => setErrorMessage(null)}
+            >
+              <Text style={styles.modalButtonTextPrimary}>{t('ok')}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -443,6 +650,39 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     lineHeight: 22,
+    marginBottom: 8,
+  },
+  replyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  replyButtonText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  repliesContainer: {
+    marginTop: 12,
+  },
+  replyCard: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  replyCardLast: {
+    borderBottomWidth: 0,
+  },
+  replyIndicator: {
+    width: 2,
+    backgroundColor: colors.border,
+    marginRight: 12,
+    marginLeft: 8,
+  },
+  replyContent: {
+    flex: 1,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -460,12 +700,34 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.card,
+  },
+  replyingToBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  replyingToContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  replyingToText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    padding: 12,
     gap: 8,
   },
   input: {

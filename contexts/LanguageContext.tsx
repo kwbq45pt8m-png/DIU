@@ -86,6 +86,7 @@ const translations: Record<Language, Record<string, string>> = {
     edit: 'Edit',
     back: 'Back',
     refresh: 'Refresh',
+    reply: 'Reply',
     
     // Auth screen
     authTitle: 'Sign In',
@@ -156,6 +157,7 @@ const translations: Record<Language, Record<string, string>> = {
     signInToCommentPlaceholder: 'Sign in to comment',
     signInToCommentTitle: 'Sign in to comment',
     signInToCommentMessage: 'Create an account or sign in to join the conversation',
+    replyTo: 'Replying to @{username}',
     
     // Username setup
     chooseUsername: 'Choose Your Username',
@@ -227,6 +229,7 @@ const translations: Record<Language, Record<string, string>> = {
     edit: '編輯',
     back: '返回',
     refresh: '重新整理',
+    reply: '回覆',
     
     // Auth screen
     authTitle: '登入',
@@ -297,6 +300,7 @@ const translations: Record<Language, Record<string, string>> = {
     signInToCommentPlaceholder: '登入以評論',
     signInToCommentTitle: '登入以評論',
     signInToCommentMessage: '建立帳號或登入以加入對話',
+    replyTo: '回覆 @{username}',
     
     // Username setup
     chooseUsername: '選擇您的使用者名稱',
