@@ -140,10 +140,8 @@ export function registerCommentRoutes(app: App) {
         }
       }
 
-      // Build nested structure: top-level comments with replies
-      const topLevelComments = allComments.filter(c => !c.parentCommentId);
+      // Build a map of comments by parent ID for efficient nested lookup
       const repliesByParentId = new Map<string, typeof allComments>();
-
       for (const comment of allComments) {
         if (comment.parentCommentId) {
           if (!repliesByParentId.has(comment.parentCommentId)) {
@@ -153,19 +151,10 @@ export function registerCommentRoutes(app: App) {
         }
       }
 
-      // Transform comments to response format
-      const formattedComments = topLevelComments.slice(offset, offset + limit).map(comment => {
+      // Recursive function to build nested reply structure at all levels
+      const buildNestedComment = (comment: typeof allComments[0]): any => {
         const userProfile = userProfilesMap.get(comment.userId);
-        const replies = (repliesByParentId.get(comment.id) || []).map(reply => {
-          const replyProfile = userProfilesMap.get(reply.userId);
-          return {
-            id: reply.id,
-            content: reply.content,
-            authorUsername: replyProfile?.username || 'anonymous',
-            createdAt: reply.createdAt,
-            parentCommentId: reply.parentCommentId,
-          };
-        });
+        const directReplies = repliesByParentId.get(comment.id) || [];
 
         return {
           id: comment.id,
@@ -173,8 +162,16 @@ export function registerCommentRoutes(app: App) {
           authorUsername: userProfile?.username || 'anonymous',
           createdAt: comment.createdAt,
           parentCommentId: comment.parentCommentId,
-          replies,
+          replies: directReplies.map(reply => buildNestedComment(reply)), // Recursive call
         };
+      };
+
+      // Get only top-level comments (parentCommentId is null)
+      const topLevelComments = allComments.filter(c => !c.parentCommentId);
+
+      // Transform comments to response format with full recursive nesting
+      const formattedComments = topLevelComments.slice(offset, offset + limit).map(comment => {
+        return buildNestedComment(comment);
       });
 
       app.logger.info({ postId, count: formattedComments.length, limit, offset }, 'Post comments retrieved successfully');
