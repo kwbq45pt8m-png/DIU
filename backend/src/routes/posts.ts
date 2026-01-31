@@ -12,62 +12,38 @@ export function registerPostRoutes(app: App) {
   /**
    * POST /api/posts
    * Create a new post (text, photo, or video)
-   * Supports multipart form data for file uploads
+   * Supports mediaUrl/mediaType for pre-uploaded media or multipart form data for file uploads
+   * Body: { content?: string, mediaUrl?: string, mediaType?: 'image' | 'video' }
    */
   app.fastify.post('/api/posts', async (
     request: FastifyRequest,
     reply: FastifyReply
-  ): Promise<{ id: string; userId: string; content: string | null; fileType: string; fileKey: string | null; createdAt: Date } | void> => {
+  ): Promise<{ id: string; userId: string; content: string | null; mediaUrl: string | null; mediaType: string | null; createdAt: Date } | void> => {
     app.logger.info({ body: request.body }, 'Creating new post');
 
     const session = await requireAuth(request, reply);
     if (!session) return;
 
     try {
-      // Handle file upload if present
-      let fileKey: string | null = null;
-      let fileType: 'text' | 'photo' | 'video' = 'text';
+      // Get content and media info from request body
+      const body = request.body as any;
+      const content = body?.content || null;
+      const mediaUrl = body?.mediaUrl || null;
+      const mediaType = body?.mediaType || null;
 
-      // Check if this is multipart form data
-      const contentType = request.headers['content-type'];
-      if (contentType && contentType.includes('multipart/form-data')) {
-        const data = await request.file({ limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
-
-        if (data) {
-          // Determine file type from MIME type
-          const mimeType = data.mimetype;
-          if (mimeType.startsWith('image/')) {
-            fileType = 'photo';
-          } else if (mimeType.startsWith('video/')) {
-            fileType = 'video';
-          }
-
-          try {
-            const buffer = await data.toBuffer();
-            const timestamp = Date.now();
-            const fileName = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const key = `posts/${session.user.id}/${timestamp}-${fileName}`;
-
-            fileKey = await app.storage.upload(key, buffer);
-            app.logger.info({ fileKey, userId: session.user.id }, 'File uploaded to storage');
-          } catch (uploadError) {
-            app.logger.error({ err: uploadError, userId: session.user.id }, 'File upload failed or exceeded size limit');
-            return reply.status(413).send({
-              message: 'File too large or upload failed (max 50MB)'
-            });
-          }
-        }
+      // Validate post has either content or media
+      if (!content && !mediaUrl) {
+        app.logger.warn({ userId: session.user.id }, 'Post must have content or media');
+        return reply.status(400).send({
+          message: 'Post must contain either text content or media URL'
+        });
       }
 
-      // Get content from request body or FormData
-      const body = request.body as any;
-      const content = typeof body === 'object' ? body.content : null;
-
-      // Validate post has either content or file
-      if (!content && !fileKey) {
-        app.logger.warn({ userId: session.user.id }, 'Post must have content or file');
+      // Validate media type if mediaUrl is provided
+      if (mediaUrl && !['image', 'video'].includes(mediaType)) {
+        app.logger.warn({ userId: session.user.id, mediaType }, 'Invalid media type');
         return reply.status(400).send({
-          message: 'Post must contain either text content or a file'
+          message: 'Media type must be either "image" or "video"'
         });
       }
 
@@ -77,15 +53,17 @@ export function registerPostRoutes(app: App) {
         .values({
           userId: session.user.id,
           content: content || null,
-          fileKey,
-          fileType,
+          mediaUrl: mediaUrl || null,
+          mediaType: mediaType || null,
+          fileKey: null, // Legacy field for backward compatibility
+          fileType: 'text', // Legacy field for backward compatibility
         })
         .returning({
           id: schema.posts.id,
           userId: schema.posts.userId,
           content: schema.posts.content,
-          fileType: schema.posts.fileType,
-          fileKey: schema.posts.fileKey,
+          mediaUrl: schema.posts.mediaUrl,
+          mediaType: schema.posts.mediaType,
           createdAt: schema.posts.createdAt,
         });
 
@@ -197,22 +175,11 @@ export function registerPostRoutes(app: App) {
             .where(eq(schema.comments.postId, post.id));
           const commentCount = Number(commentsResult[0]?.count || 0);
 
-          // Generate signed URL for file if present
-          let fileUrl: string | null = null;
-          if (post.fileKey) {
-            try {
-              const { url } = await app.storage.getSignedUrl(post.fileKey);
-              fileUrl = url;
-            } catch (urlError) {
-              app.logger.warn({ err: urlError, fileKey: post.fileKey }, 'Failed to generate signed URL');
-            }
-          }
-
           return {
             id: post.id,
             content: post.content,
-            fileUrl,
-            fileType: post.fileType,
+            mediaUrl: post.mediaUrl,
+            mediaType: post.mediaType,
             authorUsername: userProfile?.username || 'anonymous',
             createdAt: post.createdAt,
             likeCount,
@@ -283,22 +250,11 @@ export function registerPostRoutes(app: App) {
             .where(eq(schema.comments.postId, post.id));
           const commentCount = Number(commentsResult[0]?.count || 0);
 
-          // Generate signed URL for file if present
-          let fileUrl: string | null = null;
-          if (post.fileKey) {
-            try {
-              const { url } = await app.storage.getSignedUrl(post.fileKey);
-              fileUrl = url;
-            } catch (urlError) {
-              app.logger.warn({ err: urlError, fileKey: post.fileKey }, 'Failed to generate signed URL');
-            }
-          }
-
           return {
             id: post.id,
             content: post.content,
-            fileUrl,
-            fileType: post.fileType,
+            mediaUrl: post.mediaUrl,
+            mediaType: post.mediaType,
             authorUsername: userProfile?.username || 'anonymous',
             createdAt: post.createdAt,
             likeCount,
@@ -388,12 +344,12 @@ export function registerPostRoutes(app: App) {
   /**
    * PUT /api/posts/:postId
    * Update a post (only owner can update)
-   * Supports updating content and file
+   * Body: { content?: string, mediaUrl?: string, mediaType?: 'image' | 'video' }
    */
   app.fastify.put('/api/posts/:postId', async (
     request: FastifyRequest,
     reply: FastifyReply
-  ): Promise<{ id: string; content: string | null; fileUrl: string | null; fileType: string; authorUsername: string; createdAt: Date; likeCount: number; commentCount: number; hasLiked: boolean } | void> => {
+  ): Promise<{ id: string; content: string | null; mediaUrl: string | null; mediaType: string | null; authorUsername: string; createdAt: Date; likeCount: number; commentCount: number; hasLiked: boolean } | void> => {
     const { postId } = request.params as { postId: string };
 
     app.logger.info({ postId, body: request.body }, 'Updating post');
@@ -422,62 +378,25 @@ export function registerPostRoutes(app: App) {
         });
       }
 
-      // Handle file upload if present
-      let newFileKey: string | null = post.fileKey;
-      let newFileType: 'text' | 'photo' | 'video' = post.fileType as any;
-
-      // Check if this is multipart form data with a file
-      const contentType = request.headers['content-type'];
-      if (contentType && contentType.includes('multipart/form-data')) {
-        const data = await request.file({ limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
-
-        if (data) {
-          // Delete old file if it exists
-          if (post.fileKey) {
-            try {
-              await app.storage.delete(post.fileKey);
-              app.logger.info({ fileKey: post.fileKey }, 'Old file deleted from storage');
-            } catch (deleteError) {
-              app.logger.warn({ err: deleteError, fileKey: post.fileKey }, 'Failed to delete old file');
-              // Continue anyway
-            }
-          }
-
-          // Upload new file
-          try {
-            // Determine file type from MIME type
-            const mimeType = data.mimetype;
-            if (mimeType.startsWith('image/')) {
-              newFileType = 'photo';
-            } else if (mimeType.startsWith('video/')) {
-              newFileType = 'video';
-            }
-
-            const buffer = await data.toBuffer();
-            const timestamp = Date.now();
-            const fileName = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const key = `posts/${session.user.id}/${timestamp}-${fileName}`;
-
-            newFileKey = await app.storage.upload(key, buffer);
-            app.logger.info({ fileKey: newFileKey, userId: session.user.id }, 'File uploaded to storage');
-          } catch (uploadError) {
-            app.logger.error({ err: uploadError, userId: session.user.id }, 'File upload failed or exceeded size limit');
-            return reply.status(413).send({
-              message: 'File too large or upload failed (max 50MB)'
-            });
-          }
-        }
-      }
-
-      // Get content from request body
+      // Get content and media info from request body
       const body = request.body as any;
       const newContent = body?.content !== undefined ? body.content : post.content;
+      const newMediaUrl = body?.mediaUrl !== undefined ? body.mediaUrl : post.mediaUrl;
+      const newMediaType = body?.mediaType !== undefined ? body.mediaType : post.mediaType;
 
-      // Validate post has either content or file
-      if (!newContent && newFileType === 'text' && !newFileKey) {
-        app.logger.warn({ postId, userId: session.user.id }, 'Post must have content or file');
+      // Validate post has either content or media
+      if (!newContent && !newMediaUrl) {
+        app.logger.warn({ postId, userId: session.user.id }, 'Post must have content or media');
         return reply.status(400).send({
-          message: 'Post must contain either text content or a file'
+          message: 'Post must contain either text content or media URL'
+        });
+      }
+
+      // Validate media type if mediaUrl is provided
+      if (newMediaUrl && !['image', 'video'].includes(newMediaType)) {
+        app.logger.warn({ postId, userId: session.user.id, mediaType: newMediaType }, 'Invalid media type');
+        return reply.status(400).send({
+          message: 'Media type must be either "image" or "video"'
         });
       }
 
@@ -486,8 +405,8 @@ export function registerPostRoutes(app: App) {
         .update(schema.posts)
         .set({
           content: newContent || null,
-          fileKey: newFileKey,
-          fileType: newFileType,
+          mediaUrl: newMediaUrl || null,
+          mediaType: newMediaType || null,
           updatedAt: new Date(),
         })
         .where(eq(schema.posts.id, postId))
@@ -513,23 +432,12 @@ export function registerPostRoutes(app: App) {
         .where(eq(schema.comments.postId, postId));
       const commentCount = Number(commentsResult[0]?.count || 0);
 
-      // Generate signed URL for file if present
-      let fileUrl: string | null = null;
-      if (updatedPost.fileKey) {
-        try {
-          const { url } = await app.storage.getSignedUrl(updatedPost.fileKey);
-          fileUrl = url;
-        } catch (urlError) {
-          app.logger.warn({ err: urlError, fileKey: updatedPost.fileKey }, 'Failed to generate signed URL');
-        }
-      }
-
       app.logger.info({ postId, userId: session.user.id }, 'Post updated successfully');
       return {
         id: updatedPost.id,
         content: updatedPost.content,
-        fileUrl,
-        fileType: updatedPost.fileType,
+        mediaUrl: updatedPost.mediaUrl,
+        mediaType: updatedPost.mediaType,
         authorUsername: userProfile?.username || 'anonymous',
         createdAt: updatedPost.createdAt,
         likeCount,

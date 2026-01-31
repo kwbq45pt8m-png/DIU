@@ -18,6 +18,7 @@ export const userProfiles = pgTable('user_profiles', {
 /**
  * Posts - can contain text, photos, or videos
  * Files are stored in S3, with keys stored in the database
+ * mediaUrl and mediaType store pre-signed URLs and media type for uploaded media
  */
 export const posts = pgTable('posts', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -25,6 +26,8 @@ export const posts = pgTable('posts', {
   content: text('content'),
   fileKey: text('file_key'), // S3 storage key for photo/video
   fileType: text('file_type', { enum: ['text', 'photo', 'video'] }).notNull(),
+  mediaUrl: text('media_url'), // Pre-signed URL for uploaded media
+  mediaType: text('media_type', { enum: ['image', 'video'] }), // Type of uploaded media
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });

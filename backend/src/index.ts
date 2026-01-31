@@ -6,6 +6,7 @@ import { registerProfileRoutes } from './routes/profiles.js';
 import { registerPostRoutes } from './routes/posts.js';
 import { registerLikeRoutes } from './routes/likes.js';
 import { registerCommentRoutes } from './routes/comments.js';
+import { registerMediaRoutes } from './routes/media.js';
 
 // Combine both schema objects
 const schema = { ...appSchema, ...authSchema };
@@ -29,6 +30,7 @@ registerProfileRoutes(app);
 registerPostRoutes(app);
 registerLikeRoutes(app);
 registerCommentRoutes(app);
+registerMediaRoutes(app);
 
 await app.run();
 app.logger.info('DIU application running - Ready for posts, likes, and comments');
