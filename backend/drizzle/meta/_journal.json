@@ -8,6 +8,13 @@
       "when": 1769785044113,
       "tag": "20260130145724_curved_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1769841892893,
+      "tag": "20260131064452_gorgeous_oracle",
+      "breakpoints": true
     }
   ]
 }

@@ -41,12 +41,14 @@ export const likes = pgTable('likes', {
 
 /**
  * Comments - user comments on posts
+ * Can be replies to other comments via parentCommentId (supports nested replies)
  */
 export const comments = pgTable('comments', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
+  parentCommentId: uuid('parent_comment_id').references(() => comments.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -85,7 +87,7 @@ export const likesRelations = relations(likes, ({ one }) => ({
   }),
 }));
 
-export const commentsRelations = relations(comments, ({ one }) => ({
+export const commentsRelations = relations(comments, ({ one, many }) => ({
   post: one(posts, {
     fields: [comments.postId],
     references: [posts.id],
@@ -93,5 +95,13 @@ export const commentsRelations = relations(comments, ({ one }) => ({
   user: one(user, {
     fields: [comments.userId],
     references: [user.id],
+  }),
+  parentComment: one(comments, {
+    fields: [comments.parentCommentId],
+    references: [comments.id],
+    relationName: 'replies',
+  }),
+  replies: many(comments, {
+    relationName: 'replies',
   }),
 }));

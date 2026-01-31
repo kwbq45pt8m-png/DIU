@@ -11,16 +11,17 @@ export function registerCommentRoutes(app: App) {
 
   /**
    * POST /api/posts/:postId/comments
-   * Create a comment on a post
+   * Create a comment on a post or a reply to an existing comment
+   * Body: { content: string, parentCommentId?: string }
    */
   app.fastify.post('/api/posts/:postId/comments', async (
     request: FastifyRequest,
     reply: FastifyReply
-  ): Promise<{ id: string; postId: string; userId: string; content: string; createdAt: Date } | void> => {
+  ): Promise<{ id: string; postId: string; userId: string; content: string; parentCommentId?: string | null; createdAt: Date } | void> => {
     const { postId } = request.params as { postId: string };
-    const { content } = request.body as { content?: string };
+    const { content, parentCommentId } = request.body as { content?: string; parentCommentId?: string };
 
-    app.logger.info({ postId, body: request.body }, 'Creating comment on post');
+    app.logger.info({ postId, parentCommentId, body: request.body }, 'Creating comment on post');
 
     const session = await requireAuth(request, reply);
     if (!session) return;
@@ -45,6 +46,27 @@ export function registerCommentRoutes(app: App) {
         });
       }
 
+      // If parentCommentId is provided, verify parent comment exists and belongs to same post
+      if (parentCommentId) {
+        const parentComment = await app.db.query.comments.findFirst({
+          where: eq(schema.comments.id, parentCommentId),
+        });
+
+        if (!parentComment) {
+          app.logger.warn({ postId, parentCommentId }, 'Parent comment not found');
+          return reply.status(404).send({
+            message: 'Parent comment not found'
+          });
+        }
+
+        if (parentComment.postId !== postId) {
+          app.logger.warn({ postId, parentCommentId, parentPostId: parentComment.postId }, 'Parent comment belongs to different post');
+          return reply.status(400).send({
+            message: 'Parent comment must belong to the same post'
+          });
+        }
+      }
+
       // Create comment
       const [comment] = await app.db
         .insert(schema.comments)
@@ -52,26 +74,29 @@ export function registerCommentRoutes(app: App) {
           postId,
           userId: session.user.id,
           content: content.trim(),
+          parentCommentId: parentCommentId || null,
         })
         .returning({
           id: schema.comments.id,
           postId: schema.comments.postId,
           userId: schema.comments.userId,
           content: schema.comments.content,
+          parentCommentId: schema.comments.parentCommentId,
           createdAt: schema.comments.createdAt,
         });
 
-      app.logger.info({ postId, userId: session.user.id, commentId: comment.id }, 'Comment created successfully');
+      app.logger.info({ postId, userId: session.user.id, commentId: comment.id, parentCommentId }, 'Comment created successfully');
       return comment;
     } catch (error) {
-      app.logger.error({ err: error, postId, userId: session.user.id }, 'Failed to create comment');
+      app.logger.error({ err: error, postId, userId: session.user.id, parentCommentId }, 'Failed to create comment');
       throw error;
     }
   });
 
   /**
    * GET /api/posts/:postId/comments
-   * Get all comments on a post with pagination
+   * Get all comments on a post with replies nested
+   * Returns top-level comments with their replies included in a 'replies' array
    */
   app.fastify.get('/api/posts/:postId/comments', async (
     request: FastifyRequest,
@@ -97,20 +122,63 @@ export function registerCommentRoutes(app: App) {
         });
       }
 
-      const comments = await app.db.query.comments.findMany({
+      // Fetch all comments for this post (no pagination on individual comments for nested structure)
+      const allComments = await app.db.query.comments.findMany({
         where: eq(schema.comments.postId, postId),
-        limit,
-        offset,
         orderBy: desc(schema.comments.createdAt),
-        with: {
-          user: {
-            columns: { id: true, email: true },
-          },
-        },
       });
 
-      app.logger.info({ postId, count: comments.length, limit, offset }, 'Post comments retrieved successfully');
-      return comments;
+      // Get user profiles for all comments
+      const userProfilesMap = new Map<string, { username: string }>();
+      for (const comment of allComments) {
+        if (!userProfilesMap.has(comment.userId)) {
+          const profile = await app.db.query.userProfiles.findFirst({
+            where: eq(schema.userProfiles.userId, comment.userId),
+            columns: { username: true },
+          });
+          userProfilesMap.set(comment.userId, { username: profile?.username || 'anonymous' });
+        }
+      }
+
+      // Build nested structure: top-level comments with replies
+      const topLevelComments = allComments.filter(c => !c.parentCommentId);
+      const repliesByParentId = new Map<string, typeof allComments>();
+
+      for (const comment of allComments) {
+        if (comment.parentCommentId) {
+          if (!repliesByParentId.has(comment.parentCommentId)) {
+            repliesByParentId.set(comment.parentCommentId, []);
+          }
+          repliesByParentId.get(comment.parentCommentId)!.push(comment);
+        }
+      }
+
+      // Transform comments to response format
+      const formattedComments = topLevelComments.slice(offset, offset + limit).map(comment => {
+        const userProfile = userProfilesMap.get(comment.userId);
+        const replies = (repliesByParentId.get(comment.id) || []).map(reply => {
+          const replyProfile = userProfilesMap.get(reply.userId);
+          return {
+            id: reply.id,
+            content: reply.content,
+            authorUsername: replyProfile?.username || 'anonymous',
+            createdAt: reply.createdAt,
+            parentCommentId: reply.parentCommentId,
+          };
+        });
+
+        return {
+          id: comment.id,
+          content: comment.content,
+          authorUsername: userProfile?.username || 'anonymous',
+          createdAt: comment.createdAt,
+          parentCommentId: comment.parentCommentId,
+          replies,
+        };
+      });
+
+      app.logger.info({ postId, count: formattedComments.length, limit, offset }, 'Post comments retrieved successfully');
+      return formattedComments;
     } catch (error) {
       app.logger.error({ err: error, postId, limit, offset }, 'Failed to fetch post comments');
       throw error;
@@ -135,9 +203,6 @@ export function registerCommentRoutes(app: App) {
         with: {
           user: {
             columns: { id: true, email: true },
-          },
-          post: {
-            columns: { id: true },
           },
         },
       });
@@ -297,11 +362,6 @@ export function registerCommentRoutes(app: App) {
         limit,
         offset,
         orderBy: desc(schema.comments.createdAt),
-        with: {
-          post: {
-            columns: { id: true },
-          },
-        },
       });
 
       app.logger.info({ username, count: comments.length, limit, offset }, 'User comments retrieved successfully');
