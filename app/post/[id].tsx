@@ -90,6 +90,18 @@ export default function PostDetailScreen() {
     return rootComments;
   };
 
+  // Recursive function to normalize nested comments from backend
+  const normalizeNestedComment = (comment: any): Comment => {
+    return {
+      id: comment.id,
+      content: comment.content,
+      authorUsername: comment.authorUsername || comment.user?.username || comment.user?.email?.split('@')[0] || 'Anonymous',
+      createdAt: comment.createdAt,
+      parentCommentId: comment.parentCommentId,
+      replies: comment.replies ? comment.replies.map(normalizeNestedComment) : [],
+    };
+  };
+
   const loadPostAndComments = async () => {
     console.log('PostDetailScreen: Loading post and comments', { postId: id });
     setLoading(true);
@@ -110,12 +122,10 @@ export default function PostDetailScreen() {
       const hasNestedStructure = commentsData.some(c => c.replies && Array.isArray(c.replies) && c.replies.length > 0);
       
       if (hasNestedStructure) {
-        // Backend already returns nested structure - just normalize
+        // Backend already returns nested structure - recursively normalize
         console.log('PostDetailScreen: Using nested comments from backend');
-        const normalized = commentsData.map(c => ({
-          ...normalizeComment(c),
-          replies: c.replies?.map(normalizeComment) || [],
-        }));
+        const normalized = commentsData.map(normalizeNestedComment);
+        console.log('PostDetailScreen: Normalized nested comments', { rootCount: normalized.length });
         setComments(normalized);
       } else {
         // Transform flat comments into nested structure
@@ -280,11 +290,15 @@ export default function PostDetailScreen() {
     return `${days} ${dayText}`;
   };
 
-  const renderReply = (reply: Comment, isLast: boolean) => {
+  // Recursive function to render replies at any nesting level
+  const renderReply = (reply: Comment, depth: number = 1): React.ReactNode => {
     const timeAgo = formatTimeAgo(reply.createdAt);
+    const hasReplies = reply.replies && reply.replies.length > 0;
+    const maxDepth = 5; // Limit visual nesting depth to prevent excessive indentation
+    const effectiveDepth = Math.min(depth, maxDepth);
     
     return (
-      <View key={reply.id} style={[styles.replyCard, isLast && styles.replyCardLast]}>
+      <View key={reply.id} style={[styles.replyCard, { marginLeft: effectiveDepth * 12 }]}>
         <View style={styles.replyIndicator} />
         <View style={styles.replyContent}>
           <View style={styles.commentHeader}>
@@ -304,6 +318,13 @@ export default function PostDetailScreen() {
             />
             <Text style={styles.replyButtonText}>{t('reply')}</Text>
           </TouchableOpacity>
+          
+          {/* Recursively render nested replies */}
+          {hasReplies && (
+            <View style={styles.nestedRepliesContainer}>
+              {reply.replies!.map(nestedReply => renderReply(nestedReply, depth + 1))}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -335,9 +356,7 @@ export default function PostDetailScreen() {
         
         {hasReplies && (
           <View style={styles.repliesContainer}>
-            {item.replies!.map((reply, index) => 
-              renderReply(reply, index === item.replies!.length - 1)
-            )}
+            {item.replies!.map(reply => renderReply(reply, 1))}
           </View>
         )}
       </View>
@@ -666,14 +685,14 @@ const styles = StyleSheet.create({
   repliesContainer: {
     marginTop: 12,
   },
+  nestedRepliesContainer: {
+    marginTop: 8,
+  },
   replyCard: {
     flexDirection: 'row',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  replyCardLast: {
-    borderBottomWidth: 0,
   },
   replyIndicator: {
     width: 2,
