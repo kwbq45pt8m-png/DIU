@@ -66,11 +66,13 @@ export default function CreatePostScreen() {
     console.log('CreatePost: Submit button pressed', { hasContent: !!content, hasMedia: !!mediaUri });
     
     if (!content.trim() && !mediaUri) {
+      console.log('CreatePost: Validation failed - empty content');
       setErrorModal({ visible: true, message: t('postEmptyError') });
       return;
     }
 
     // Show ad modal before posting
+    console.log('CreatePost: Showing ad modal');
     setShowAdModal(true);
     setAdCountdown(10);
   };
@@ -87,7 +89,7 @@ export default function CreatePostScreen() {
 
       // Step 1: Upload media if present
       if (mediaUri && mediaType) {
-        console.log('CreatePost: Uploading media', { mediaType });
+        console.log('CreatePost: Uploading media', { mediaType, uri: mediaUri });
         
         // Create FormData for media upload
         const formData = new FormData();
@@ -106,6 +108,7 @@ export default function CreatePostScreen() {
         const { getBearerToken } = await import('@/utils/api');
         const token = await getBearerToken();
         
+        console.log('CreatePost: Uploading to', `${BACKEND_URL}/api/upload/media`);
         const uploadResponse = await fetch(`${BACKEND_URL}/api/upload/media`, {
           method: 'POST',
           headers: {
@@ -115,6 +118,8 @@ export default function CreatePostScreen() {
         });
 
         if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text();
+          console.error('CreatePost: Media upload failed', { status: uploadResponse.status, error: errorText });
           throw new Error('Failed to upload media');
         }
 
@@ -125,7 +130,10 @@ export default function CreatePostScreen() {
       }
 
       // Step 2: Create post
-      console.log('CreatePost: Creating post');
+      console.log('CreatePost: Creating post with data', { 
+        hasContent: !!content.trim(), 
+        hasMedia: !!uploadedMediaUrl 
+      });
       const postData: any = {
         content: content.trim(),
       };
@@ -135,13 +143,18 @@ export default function CreatePostScreen() {
         postData.mediaType = uploadedMediaType;
       }
 
-      await authenticatedPost('/api/posts', postData);
-      console.log('CreatePost: Post created successfully');
+      const result = await authenticatedPost('/api/posts', postData);
+      console.log('CreatePost: Post created successfully', result);
       
       setLoading(false);
+      console.log('CreatePost: Navigating back to home');
       router.back();
-    } catch (error) {
-      console.error('CreatePost: Error creating post', error);
+    } catch (error: any) {
+      console.error('CreatePost: Error creating post', { 
+        error: error.message, 
+        stack: error.stack,
+        response: error.response 
+      });
       setLoading(false);
       setErrorModal({ visible: true, message: t('postError') });
     }

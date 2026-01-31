@@ -76,9 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for deep links (e.g. from social auth redirects)
     const subscription = Linking.addEventListener("url", (event) => {
-      console.log("Deep link received, refreshing user session");
-      // Allow time for the client to process the token if needed
-      setTimeout(() => fetchUser(), 500);
+      // Only refresh session for auth-related deep links, not internal navigation
+      const url = event.url;
+      if (url.includes('auth-callback') || url.includes('oauth') || url.includes('callback')) {
+        console.log("Auth deep link received, refreshing user session", { url });
+        // Allow time for the client to process the token if needed
+        setTimeout(() => fetchUser(), 500);
+      }
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
