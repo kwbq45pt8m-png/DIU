@@ -77,7 +77,8 @@ export function registerPostRoutes(app: App) {
 
   /**
    * GET /api/posts/:postId
-   * Get a specific post with like count and comment count
+   * Get a specific post detail with enriched format (matching feed endpoint)
+   * Returns: { id, content, mediaUrl (signed), mediaType, authorUsername, createdAt, likeCount, commentCount, hasLiked }
    */
   app.fastify.get('/api/posts/:postId', async (
     request: FastifyRequest,
@@ -85,26 +86,11 @@ export function registerPostRoutes(app: App) {
   ): Promise<any | void> => {
     const { postId } = request.params as { postId: string };
 
-    app.logger.info({ postId }, 'Fetching post');
+    app.logger.info({ postId }, 'Fetching post detail');
 
     try {
       const post = await app.db.query.posts.findFirst({
         where: eq(schema.posts.id, postId),
-        with: {
-          user: {
-            columns: { id: true, email: true, createdAt: true },
-          },
-          likes: {
-            columns: { id: true },
-          },
-          comments: {
-            with: {
-              user: {
-                columns: { id: true, email: true },
-              },
-            },
-          },
-        },
       });
 
       if (!post) {
@@ -114,16 +100,51 @@ export function registerPostRoutes(app: App) {
         });
       }
 
-      // Generate signed URL for file if present
-      if (post.fileKey) {
-        const { url } = await app.storage.getSignedUrl(post.fileKey);
-        (post as any).fileUrl = url;
+      // Get author's username
+      const userProfile = await app.db.query.userProfiles.findFirst({
+        where: eq(schema.userProfiles.userId, post.userId),
+        columns: { username: true },
+      });
+
+      // Get like count
+      const likesResult = await app.db
+        .select({ count: count(schema.likes.id) })
+        .from(schema.likes)
+        .where(eq(schema.likes.postId, postId));
+      const likeCount = Number(likesResult[0]?.count || 0);
+
+      // Get comment count
+      const commentsResult = await app.db
+        .select({ count: count(schema.comments.id) })
+        .from(schema.comments)
+        .where(eq(schema.comments.postId, postId));
+      const commentCount = Number(commentsResult[0]?.count || 0);
+
+      // Generate fresh signed URL from storage key if media exists
+      let mediaUrl: string | null = null;
+      if (post.mediaUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(post.mediaUrl);
+          mediaUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, mediaKey: post.mediaUrl }, 'Failed to generate signed URL');
+        }
       }
 
-      app.logger.info({ postId }, 'Post retrieved successfully');
-      return post;
+      app.logger.info({ postId }, 'Post detail retrieved successfully');
+      return {
+        id: post.id,
+        content: post.content,
+        mediaUrl,
+        mediaType: post.mediaType,
+        authorUsername: userProfile?.username || 'anonymous',
+        createdAt: post.createdAt,
+        likeCount,
+        commentCount,
+        hasLiked: false, // Always false on public endpoint
+      };
     } catch (error) {
-      app.logger.error({ err: error, postId }, 'Failed to fetch post');
+      app.logger.error({ err: error, postId }, 'Failed to fetch post detail');
       throw error;
     }
   });
