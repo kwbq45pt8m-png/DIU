@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,11 +11,20 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Modal } from '@/components/ui/Modal';
 import { EditPostModal } from '@/components/ui/EditPostModal';
 
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
+
 interface Post {
   id: string;
   content: string;
   fileUrl?: string;
   fileType?: 'image' | 'video';
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
   authorUsername: string;
   createdAt: string;
   likeCount: number;
@@ -67,6 +77,12 @@ export default function MyPostsScreen() {
   const handleLike = async (postId: string) => {
     console.log('[MyPosts] Like button pressed', { postId });
 
+    // Get current like state for this post
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const wasLiked = post.hasLiked;
+
     // Optimistic update
     setPosts(prevPosts =>
       prevPosts.map(post =>
@@ -81,25 +97,20 @@ export default function MyPostsScreen() {
     );
 
     try {
-      const { authenticatedPost } = await import('@/utils/api');
-      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
-        `/api/posts/${postId}/like`,
-        {}
-      );
-      console.log('[MyPosts] Like toggled successfully', response);
+      const { authenticatedPost, authenticatedDelete } = await import('@/utils/api');
       
-      // Update with actual server response
-      setPosts(prevPosts =>
-        prevPosts.map(post =>
-          post.id === postId
-            ? {
-                ...post,
-                hasLiked: response.liked,
-                likeCount: response.likeCount,
-              }
-            : post
-        )
-      );
+      if (wasLiked) {
+        // Unlike the post
+        await authenticatedDelete(`/api/posts/${postId}/like`, {});
+        console.log('[MyPosts] Post unliked successfully');
+      } else {
+        // Like the post
+        await authenticatedPost(`/api/posts/${postId}/like`, {});
+        console.log('[MyPosts] Post liked successfully');
+      }
+      
+      // Reload posts to get accurate counts
+      await loadMyPosts();
     } catch (error) {
       console.error('[MyPosts] Error toggling like', error);
       // Revert optimistic update on error
@@ -108,8 +119,8 @@ export default function MyPostsScreen() {
           post.id === postId
             ? {
                 ...post,
-                hasLiked: !post.hasLiked,
-                likeCount: post.hasLiked ? post.likeCount + 1 : post.likeCount - 1,
+                hasLiked: wasLiked,
+                likeCount: wasLiked ? post.likeCount + 1 : post.likeCount - 1,
               }
             : post
         )
@@ -210,6 +221,8 @@ export default function MyPostsScreen() {
   const renderPost = ({ item }: { item: Post }) => {
     const timeAgo = formatTimeAgo(item.createdAt);
     const likeIconName = item.hasLiked ? 'favorite' : 'favorite-border';
+    const mediaUrl = item.mediaUrl || item.fileUrl;
+    const mediaType = item.mediaType || item.fileType;
     
     return (
       <View style={styles.postCard}>
@@ -244,7 +257,27 @@ export default function MyPostsScreen() {
           </View>
         </View>
 
-        <Text style={styles.postContent}>{item.content}</Text>
+        {item.content ? (
+          <Text style={styles.postContent}>{item.content}</Text>
+        ) : null}
+
+        {mediaUrl && mediaType === 'image' ? (
+          <Image
+            source={resolveImageSource(mediaUrl)}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
+        ) : null}
+
+        {mediaUrl && mediaType === 'video' ? (
+          <Video
+            source={{ uri: mediaUrl }}
+            style={styles.mediaVideo}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+          />
+        ) : null}
 
         <View style={styles.postActions}>
           <TouchableOpacity 
@@ -428,6 +461,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 24,
     marginBottom: 16,
+  },
+  mediaImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
+  },
+  mediaVideo: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
   },
   postActions: {
     flexDirection: 'row',

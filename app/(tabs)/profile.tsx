@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
@@ -11,11 +11,15 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import Button from '@/components/button';
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, fetchUser } = useAuth();
   const router = useRouter();
   const { t } = useLanguage();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [updatingUsername, setUpdatingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
 
   const handleLogout = async () => {
     console.log('Profile: Logout confirmed');
@@ -29,6 +33,51 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Profile: Logout error', error);
       setLoggingOut(false);
+    }
+  };
+
+  const handleUpdateUsername = async () => {
+    console.log('Profile: Update username button pressed', { newUsername });
+    
+    // Validation
+    if (!newUsername.trim()) {
+      setUsernameError(t('usernameRequired'));
+      return;
+    }
+    
+    if (newUsername.length < 3) {
+      setUsernameError(t('usernameMinLength'));
+      return;
+    }
+    
+    if (!/^[a-zA-Z0-9_]+$/.test(newUsername)) {
+      setUsernameError(t('usernameInvalidChars'));
+      return;
+    }
+    
+    setUpdatingUsername(true);
+    setUsernameError('');
+    
+    try {
+      const { authenticatedPut } = await import('@/utils/api');
+      await authenticatedPut('/api/users/profile', { username: newUsername });
+      console.log('Profile: Username updated successfully');
+      
+      // Refresh user data
+      await fetchUser();
+      
+      // Close modal and reset
+      setShowUsernameModal(false);
+      setNewUsername('');
+    } catch (error: any) {
+      console.error('Profile: Error updating username', error);
+      if (error.message.includes('already taken') || error.message.includes('exists')) {
+        setUsernameError(t('usernameTaken'));
+      } else {
+        setUsernameError(t('usernameError'));
+      }
+    } finally {
+      setUpdatingUsername(false);
     }
   };
 
@@ -47,6 +96,12 @@ export default function ProfileScreen() {
   const signOutMessageText = t('signOutMessage');
   const cancelText = t('cancel');
   const signingOutText = t('signingOut');
+  const updateUsernameText = t('updateUsername');
+  const updateUsernameTitle = t('updateUsernameTitle');
+  const updateUsernameMessage = t('updateUsernameMessage');
+  const usernamePlaceholderText = t('usernamePlaceholder');
+  const usernameHintText = t('usernameHint');
+  const updatingText = t('updating');
 
   // If user is not authenticated, show sign-in prompt
   if (!user) {
@@ -101,7 +156,24 @@ export default function ProfileScreen() {
             </View>
           </View>
           
-          <Text style={styles.username}>@{user?.name || 'username'}</Text>
+          <View style={styles.usernameContainer}>
+            <Text style={styles.username}>@{user?.name || 'username'}</Text>
+            <TouchableOpacity
+              style={styles.editUsernameButton}
+              onPress={() => {
+                setNewUsername(user?.name || '');
+                setShowUsernameModal(true);
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="pencil"
+                android_material_icon_name="edit"
+                size={16}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
+          
           <Text style={styles.email}>{user?.email || 'email@example.com'}</Text>
         </View>
 
@@ -184,6 +256,7 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
+      {/* Logout Modal */}
       <Modal
         visible={showLogoutModal}
         transparent
@@ -214,6 +287,71 @@ export default function ProfileScreen() {
                 <Text style={styles.modalButtonTextConfirm}>
                   {loggingOut ? signingOutText : signOutText}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Update Username Modal */}
+      <Modal
+        visible={showUsernameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowUsernameModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{updateUsernameTitle}</Text>
+            <Text style={styles.modalText}>
+              {updateUsernameMessage}
+            </Text>
+            
+            <TextInput
+              style={styles.usernameInput}
+              placeholder={usernamePlaceholderText}
+              placeholderTextColor={colors.textSecondary}
+              value={newUsername}
+              onChangeText={(text) => {
+                setNewUsername(text);
+                setUsernameError('');
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={20}
+            />
+            
+            <Text style={styles.usernameHint}>{usernameHintText}</Text>
+            
+            {usernameError ? (
+              <Text style={styles.errorText}>{usernameError}</Text>
+            ) : null}
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowUsernameModal(false);
+                  setNewUsername('');
+                  setUsernameError('');
+                }}
+                disabled={updatingUsername}
+              >
+                <Text style={styles.modalButtonTextCancel}>{cancelText}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleUpdateUsername}
+                disabled={updatingUsername}
+              >
+                {updatingUsername ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalButtonTextConfirm}>
+                    {updateUsernameText}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -268,11 +406,19 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
   },
+  usernameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   username: {
     fontSize: 24,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
+  },
+  editUsernameButton: {
+    padding: 4,
   },
   email: {
     fontSize: 14,
@@ -381,6 +527,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
   },
   modalButtonCancel: {
     backgroundColor: colors.backgroundAlt,
@@ -433,5 +581,26 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  usernameInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  usernameHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#FF3B30',
+    marginBottom: 16,
+    textAlign: 'center',
   },
 });

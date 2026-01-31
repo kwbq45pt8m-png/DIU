@@ -1,13 +1,21 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 interface Post {
   id: string;
@@ -70,6 +78,12 @@ export default function HomeScreen() {
       return;
     }
 
+    // Get current like state for this post
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const wasLiked = post.hasLiked;
+
     // Optimistic update
     setPosts(prevPosts =>
       prevPosts.map(post =>
@@ -84,25 +98,20 @@ export default function HomeScreen() {
     );
 
     try {
-      const { authenticatedPost } = await import('@/utils/api');
-      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
-        `/api/posts/${postId}/like`,
-        {}
-      );
-      console.log('HomeScreen: Like toggled successfully', response);
+      const { authenticatedPost, authenticatedDelete } = await import('@/utils/api');
       
-      // Update with actual server response
-      setPosts(prevPosts =>
-        prevPosts.map(post =>
-          post.id === postId
-            ? {
-                ...post,
-                hasLiked: response.liked,
-                likeCount: response.likeCount,
-              }
-            : post
-        )
-      );
+      if (wasLiked) {
+        // Unlike the post
+        await authenticatedDelete(`/api/posts/${postId}/like`, {});
+        console.log('HomeScreen: Post unliked successfully');
+      } else {
+        // Like the post
+        await authenticatedPost(`/api/posts/${postId}/like`, {});
+        console.log('HomeScreen: Post liked successfully');
+      }
+      
+      // Reload posts to get accurate counts
+      await loadPosts();
     } catch (error) {
       console.error('HomeScreen: Error toggling like', error);
       // Revert optimistic update on error
@@ -111,8 +120,8 @@ export default function HomeScreen() {
           post.id === postId
             ? {
                 ...post,
-                hasLiked: !post.hasLiked,
-                likeCount: post.hasLiked ? post.likeCount + 1 : post.likeCount - 1,
+                hasLiked: wasLiked,
+                likeCount: wasLiked ? post.likeCount + 1 : post.likeCount - 1,
               }
             : post
         )
@@ -195,7 +204,27 @@ export default function HomeScreen() {
           <Text style={styles.timestamp}>{timeAgo}</Text>
         </View>
 
-        <Text style={styles.postContent}>{item.content}</Text>
+        {item.content ? (
+          <Text style={styles.postContent}>{item.content}</Text>
+        ) : null}
+
+        {item.mediaUrl && item.mediaType === 'image' ? (
+          <Image
+            source={resolveImageSource(item.mediaUrl)}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
+        ) : null}
+
+        {item.mediaUrl && item.mediaType === 'video' ? (
+          <Video
+            source={{ uri: item.mediaUrl }}
+            style={styles.mediaVideo}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+          />
+        ) : null}
 
         <View style={styles.postActions}>
           <TouchableOpacity 
@@ -392,6 +421,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 24,
     marginBottom: 16,
+  },
+  mediaImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
+  },
+  mediaVideo: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
   },
   postActions: {
     flexDirection: 'row',

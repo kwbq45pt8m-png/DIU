@@ -1,13 +1,21 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 interface Post {
   id: string;
@@ -186,6 +194,7 @@ export default function HomeScreen() {
 
   const renderPost = ({ item }: { item: Post }) => {
     const timeAgo = formatTimeAgo(item.createdAt);
+    const likeIconName = item.hasLiked ? 'favorite' : 'favorite-border';
     
     return (
       <View style={styles.postCard}>
@@ -194,7 +203,27 @@ export default function HomeScreen() {
           <Text style={styles.timestamp}>{timeAgo}</Text>
         </View>
 
-        <Text style={styles.postContent}>{item.content}</Text>
+        {item.content ? (
+          <Text style={styles.postContent}>{item.content}</Text>
+        ) : null}
+
+        {item.mediaUrl && item.mediaType === 'image' ? (
+          <Image
+            source={resolveImageSource(item.mediaUrl)}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
+        ) : null}
+
+        {item.mediaUrl && item.mediaType === 'video' ? (
+          <Video
+            source={{ uri: item.mediaUrl }}
+            style={styles.mediaVideo}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+          />
+        ) : null}
 
         <View style={styles.postActions}>
           <TouchableOpacity 
@@ -203,7 +232,7 @@ export default function HomeScreen() {
           >
             <IconSymbol
               ios_icon_name={item.hasLiked ? 'heart.fill' : 'heart'}
-              android_material_icon_name={item.hasLiked ? 'favorite' : 'favorite-border'}
+              android_material_icon_name={likeIconName}
               size={20}
               color={item.hasLiked ? colors.primary : colors.textSecondary}
             />
@@ -391,6 +420,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 24,
     marginBottom: 16,
+  },
+  mediaImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
+  },
+  mediaVideo: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: colors.background,
   },
   postActions: {
     flexDirection: 'row',

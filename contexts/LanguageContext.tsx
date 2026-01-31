@@ -130,6 +130,9 @@ const translations: Record<Language, Record<string, string>> = {
     signOutConfirm: 'Sign Out?',
     signOutMessage: 'Are you sure you want to sign out of DIU?',
     signingOut: 'Signing Out...',
+    updateUsername: 'Update Username',
+    updateUsernameTitle: 'Update Your Username',
+    updateUsernameMessage: 'Choose a new username for your profile.',
     
     // Create post screen
     createPost: 'Create Post',
@@ -282,6 +285,9 @@ const translations: Record<Language, Record<string, string>> = {
     signOutConfirm: '確定要登出？',
     signOutMessage: '您確定要登出 DIU 嗎？',
     signingOut: '登出中...',
+    updateUsername: '更新使用者名稱',
+    updateUsernameTitle: '更新您的使用者名稱',
+    updateUsernameMessage: '為您的個人資料選擇新的使用者名稱。',
     
     // Create post screen
     createPost: '建立貼文',

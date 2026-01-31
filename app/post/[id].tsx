@@ -169,6 +169,8 @@ export default function PostDetailScreen() {
     }
 
     if (!post) return;
+    
+    const wasLiked = post.hasLiked;
 
     // Optimistic update
     setPost(prev => prev ? {
@@ -178,25 +180,27 @@ export default function PostDetailScreen() {
     } : null);
 
     try {
-      const { authenticatedPost } = await import('@/utils/api');
-      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
-        `/api/posts/${id}/like`,
-        {}
-      );
-      console.log('PostDetailScreen: Like toggled successfully', response);
+      const { authenticatedPost, authenticatedDelete } = await import('@/utils/api');
       
-      setPost(prev => prev ? {
-        ...prev,
-        hasLiked: response.liked,
-        likeCount: response.likeCount,
-      } : null);
+      if (wasLiked) {
+        // Unlike the post
+        await authenticatedDelete(`/api/posts/${id}/like`, {});
+        console.log('PostDetailScreen: Post unliked successfully');
+      } else {
+        // Like the post
+        await authenticatedPost(`/api/posts/${id}/like`, {});
+        console.log('PostDetailScreen: Post liked successfully');
+      }
+      
+      // Reload to get accurate counts
+      await loadPostAndComments();
     } catch (error) {
       console.error('PostDetailScreen: Error toggling like', error);
       // Revert on error
       setPost(prev => prev ? {
         ...prev,
-        hasLiked: !prev.hasLiked,
-        likeCount: prev.hasLiked ? prev.likeCount + 1 : prev.likeCount - 1,
+        hasLiked: wasLiked,
+        likeCount: wasLiked ? prev.likeCount + 1 : prev.likeCount - 1,
       } : null);
     }
   };
@@ -278,63 +282,57 @@ export default function PostDetailScreen() {
       return;
     }
 
+    // Find the comment to get its current like state
+    let wasLiked = false;
+    const findComment = (comments: Comment[]): boolean => {
+      for (const comment of comments) {
+        if (comment.id === commentId) {
+          wasLiked = comment.hasLiked;
+          return true;
+        }
+        if (comment.replies && comment.replies.length > 0) {
+          if (findComment(comment.replies)) return true;
+        }
+      }
+      return false;
+    };
+    findComment(comments);
+
     // Optimistic update - recursively update the comment in the nested structure
-    const updateCommentLike = (comments: Comment[]): Comment[] => {
+    const updateCommentLike = (comments: Comment[], liked: boolean): Comment[] => {
       return comments.map(comment => {
         if (comment.id === commentId) {
-          const newHasLiked = !comment.hasLiked;
-          const newLikeCount = newHasLiked ? comment.likeCount + 1 : comment.likeCount - 1;
           return {
             ...comment,
-            hasLiked: newHasLiked,
-            likeCount: newLikeCount,
+            hasLiked: liked,
+            likeCount: liked ? comment.likeCount + 1 : comment.likeCount - 1,
           };
         }
         if (comment.replies && comment.replies.length > 0) {
           return {
             ...comment,
-            replies: updateCommentLike(comment.replies),
+            replies: updateCommentLike(comment.replies, liked),
           };
         }
         return comment;
       });
     };
 
-    setComments(prevComments => updateCommentLike(prevComments));
+    setComments(prevComments => updateCommentLike(prevComments, !wasLiked));
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
-        `/api/comments/${commentId}/like`,
-        {}
-      );
-      console.log('PostDetailScreen: Comment like toggled successfully', response);
       
-      // Update with actual response from backend
-      const updateCommentLikeFromResponse = (comments: Comment[]): Comment[] => {
-        return comments.map(comment => {
-          if (comment.id === commentId) {
-            return {
-              ...comment,
-              hasLiked: response.liked,
-              likeCount: response.likeCount,
-            };
-          }
-          if (comment.replies && comment.replies.length > 0) {
-            return {
-              ...comment,
-              replies: updateCommentLikeFromResponse(comment.replies),
-            };
-          }
-          return comment;
-        });
-      };
+      // Comment likes use POST to toggle (backend handles the toggle logic)
+      await authenticatedPost(`/api/comments/${commentId}/like`, {});
+      console.log('PostDetailScreen: Comment like toggled successfully');
       
-      setComments(prevComments => updateCommentLikeFromResponse(prevComments));
+      // Reload to get accurate counts
+      await loadPostAndComments();
     } catch (error) {
       console.error('PostDetailScreen: Error toggling comment like', error);
       // Revert optimistic update on error
-      setComments(prevComments => updateCommentLike(prevComments));
+      setComments(prevComments => updateCommentLike(prevComments, wasLiked));
       setErrorMessage(t('failedToLikeComment'));
     }
   };

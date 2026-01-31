@@ -120,7 +120,15 @@ export default function CreatePostScreen() {
         if (!uploadResponse.ok) {
           const errorText = await uploadResponse.text();
           console.error('CreatePost: Media upload failed', { status: uploadResponse.status, error: errorText });
-          throw new Error('Failed to upload media');
+          
+          // Handle specific error cases
+          if (uploadResponse.status === 413) {
+            throw new Error('File is too large. Maximum size is 100MB.');
+          } else if (uploadResponse.status === 400) {
+            throw new Error('Invalid file format. Please select a valid image or video.');
+          } else {
+            throw new Error('Failed to upload media. Please try again.');
+          }
         }
 
         const uploadData = await uploadResponse.json();
@@ -134,9 +142,12 @@ export default function CreatePostScreen() {
         hasContent: !!content.trim(), 
         hasMedia: !!uploadedMediaUrl 
       });
-      const postData: any = {
-        content: content.trim(),
-      };
+      const postData: any = {};
+
+      // Only add content if it's not empty
+      if (content.trim()) {
+        postData.content = content.trim();
+      }
 
       if (uploadedMediaUrl) {
         postData.mediaUrl = uploadedMediaUrl;
@@ -156,7 +167,10 @@ export default function CreatePostScreen() {
         response: error.response 
       });
       setLoading(false);
-      setErrorModal({ visible: true, message: t('postError') });
+      
+      // Show specific error message if available
+      const errorMessage = error.message || t('postError');
+      setErrorModal({ visible: true, message: errorMessage });
     }
   };
 
