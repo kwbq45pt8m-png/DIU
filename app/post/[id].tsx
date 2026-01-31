@@ -124,6 +124,21 @@ export default function PostDetailScreen() {
     };
   };
 
+  // Normalize post data from backend (handles different response formats)
+  const normalizePost = (rawPost: any): Post => {
+    return {
+      id: rawPost.id,
+      content: rawPost.content,
+      mediaUrl: rawPost.mediaUrl,
+      mediaType: rawPost.mediaType,
+      authorUsername: rawPost.authorUsername || rawPost.user?.username || rawPost.user?.email?.split('@')[0] || 'Anonymous',
+      createdAt: rawPost.createdAt,
+      likeCount: rawPost.likeCount ?? (rawPost.likes?.length || 0),
+      commentCount: rawPost.commentCount ?? (rawPost.comments?.length || 0),
+      hasLiked: rawPost.hasLiked ?? false,
+    };
+  };
+
   const loadPostAndComments = async () => {
     console.log('PostDetailScreen: Loading post and comments', { postId: id });
     setLoading(true);
@@ -132,9 +147,13 @@ export default function PostDetailScreen() {
       const { apiGet } = await import('@/utils/api');
       
       // Load post details (public endpoint)
-      const postData = await apiGet<Post>(`/api/posts/${id}`);
-      console.log('PostDetailScreen: Post loaded', postData);
-      setPost(postData);
+      const postData = await apiGet<any>(`/api/posts/${id}`);
+      console.log('PostDetailScreen: Post loaded (raw)', postData);
+      
+      // Normalize post data to handle different backend response formats
+      const normalizedPost = normalizePost(postData);
+      console.log('PostDetailScreen: Post normalized', normalizedPost);
+      setPost(normalizedPost);
 
       // Load comments (public endpoint)
       const commentsData = await apiGet<any[]>(`/api/posts/${id}/comments`);
