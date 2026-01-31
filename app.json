@@ -5,11 +5,11 @@
     "slug": "DIU",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/diu-icon.png",
+    "icon": "./assets/images/5c073532-ca39-4668-a38b-f49fa0537ef8.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/diu-icon.png",
+      "image": "./assets/images/5c073532-ca39-4668-a38b-f49fa0537ef8.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -18,18 +18,19 @@
       "bundleIdentifier": "com.anonymous.Natively",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "icon": "./assets/images/5c073532-ca39-4668-a38b-f49fa0537ef8.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/diu-icon.png",
+        "foregroundImage": "./assets/images/5c073532-ca39-4668-a38b-f49fa0537ef8.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.Natively"
     },
     "web": {
-      "favicon": "./assets/images/diu-icon.png",
+      "favicon": "./assets/images/5c073532-ca39-4668-a38b-f49fa0537ef8.png",
       "bundler": "metro"
     },
     "plugins": [
