@@ -173,10 +173,13 @@ export default function CreatePostScreen() {
   const canSubmit = !!(postContent.trim() || selectedMedia);
   const adTitleText = t('adTitle');
   const adMessageText = t('adMessage');
-  const adCountdownText = adCountdown > 0 ? `${adCountdown}s` : t('continue');
   const postPlaceholderText = t('postPlaceholder');
   const addMediaText = t('addImage');
   const uploadingText = t('uploading');
+  
+  // Button text logic
+  const continueButtonText = adCountdown > 0 ? `${t('continue')} (${adCountdown}s)` : t('continue');
+  const isButtonDisabled = adCountdown > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -270,14 +273,11 @@ export default function CreatePostScreen() {
             </View>
 
             <TouchableOpacity 
-              style={[styles.continueButton, adCountdown > 0 && styles.continueButtonDisabled]}
+              style={[styles.continueButton, isButtonDisabled && styles.continueButtonDisabled]}
               onPress={finishPost}
-              disabled={adCountdown > 0}
+              disabled={isButtonDisabled}
             >
-              {adCountdown > 0 ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : null}
-              <Text style={styles.continueButtonText}>{adCountdownText}</Text>
+              <Text style={styles.continueButtonText}>{continueButtonText}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -409,12 +409,10 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 10,
     alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
   },
   continueButtonDisabled: {
     opacity: 0.5,
