@@ -215,7 +215,7 @@ export default function HomeScreen() {
           <Image
             source={resolveImageSource(item.mediaUrl)}
             style={styles.mediaImage}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         ) : null}
 

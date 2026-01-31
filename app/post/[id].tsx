@@ -624,7 +624,7 @@ export default function PostDetailScreen() {
                 <Image
                   source={resolveImageSource(post.mediaUrl)}
                   style={styles.mediaImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
               ) : null}
 

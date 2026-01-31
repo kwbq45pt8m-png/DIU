@@ -265,7 +265,7 @@ export default function MyPostsScreen() {
           <Image
             source={resolveImageSource(mediaUrl)}
             style={styles.mediaImage}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         ) : null}
 
