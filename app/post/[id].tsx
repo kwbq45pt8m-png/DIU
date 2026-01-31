@@ -23,8 +23,11 @@ interface Comment {
   id: string;
   content: string;
   authorUsername: string;
+  authorId: string;
   createdAt: string;
   parentCommentId?: string;
+  hasLiked: boolean;
+  likeCount: number;
   replies?: Comment[];
 }
 
@@ -41,6 +44,9 @@ export default function PostDetailScreen() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
+  const [isDeletingComment, setIsDeletingComment] = useState(false);
 
   const normalizeComment = (rawComment: any): Comment => {
     // Handle different response formats from backend
@@ -48,8 +54,11 @@ export default function PostDetailScreen() {
       id: rawComment.id,
       content: rawComment.content,
       authorUsername: rawComment.authorUsername || rawComment.user?.username || rawComment.user?.email?.split('@')[0] || 'Anonymous',
+      authorId: rawComment.authorId || rawComment.userId || '',
       createdAt: rawComment.createdAt,
       parentCommentId: rawComment.parentCommentId,
+      hasLiked: rawComment.hasLiked || false,
+      likeCount: rawComment.likeCount || 0,
       replies: rawComment.replies || [],
     };
   };
@@ -96,8 +105,11 @@ export default function PostDetailScreen() {
       id: comment.id,
       content: comment.content,
       authorUsername: comment.authorUsername || comment.user?.username || comment.user?.email?.split('@')[0] || 'Anonymous',
+      authorId: comment.authorId || comment.userId || '',
       createdAt: comment.createdAt,
       parentCommentId: comment.parentCommentId,
+      hasLiked: comment.hasLiked || false,
+      likeCount: comment.likeCount || 0,
       replies: comment.replies ? comment.replies.map(normalizeNestedComment) : [],
     };
   };
@@ -257,6 +269,125 @@ export default function PostDetailScreen() {
     setCommentText('');
   };
 
+  const handleLikeComment = async (commentId: string) => {
+    console.log('PostDetailScreen: Like comment pressed', { commentId, authenticated: !!user });
+    
+    if (!user) {
+      console.log('PostDetailScreen: User not authenticated, showing auth modal');
+      setShowAuthModal(true);
+      return;
+    }
+
+    // Optimistic update - recursively update the comment in the nested structure
+    const updateCommentLike = (comments: Comment[]): Comment[] => {
+      return comments.map(comment => {
+        if (comment.id === commentId) {
+          const newHasLiked = !comment.hasLiked;
+          const newLikeCount = newHasLiked ? comment.likeCount + 1 : comment.likeCount - 1;
+          return {
+            ...comment,
+            hasLiked: newHasLiked,
+            likeCount: newLikeCount,
+          };
+        }
+        if (comment.replies && comment.replies.length > 0) {
+          return {
+            ...comment,
+            replies: updateCommentLike(comment.replies),
+          };
+        }
+        return comment;
+      });
+    };
+
+    setComments(prevComments => updateCommentLike(prevComments));
+
+    try {
+      const { authenticatedPost } = await import('@/utils/api');
+      const response = await authenticatedPost<{ liked: boolean; likeCount: number }>(
+        `/api/comments/${commentId}/like`,
+        {}
+      );
+      console.log('PostDetailScreen: Comment like toggled successfully', response);
+      
+      // Update with actual response from backend
+      const updateCommentLikeFromResponse = (comments: Comment[]): Comment[] => {
+        return comments.map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              hasLiked: response.liked,
+              likeCount: response.likeCount,
+            };
+          }
+          if (comment.replies && comment.replies.length > 0) {
+            return {
+              ...comment,
+              replies: updateCommentLikeFromResponse(comment.replies),
+            };
+          }
+          return comment;
+        });
+      };
+      
+      setComments(prevComments => updateCommentLikeFromResponse(prevComments));
+    } catch (error) {
+      console.error('PostDetailScreen: Error toggling comment like', error);
+      // Revert optimistic update on error
+      setComments(prevComments => updateCommentLike(prevComments));
+      setErrorMessage(t('failedToLikeComment'));
+    }
+  };
+
+  const handleDeleteCommentPress = (commentId: string) => {
+    console.log('PostDetailScreen: Delete comment pressed', { commentId });
+    setCommentToDelete(commentId);
+    setShowDeleteCommentModal(true);
+  };
+
+  const handleDeleteComment = async () => {
+    if (!commentToDelete) {
+      console.log('PostDetailScreen: No comment to delete');
+      return;
+    }
+
+    console.log('PostDetailScreen: Deleting comment', { commentId: commentToDelete });
+    setIsDeletingComment(true);
+
+    try {
+      const { authenticatedDelete } = await import('@/utils/api');
+      await authenticatedDelete(`/api/comments/${commentToDelete}`, {});
+      console.log('PostDetailScreen: Comment deleted successfully');
+      
+      // Remove the comment from the nested structure
+      const removeComment = (comments: Comment[]): Comment[] => {
+        return comments
+          .filter(comment => comment.id !== commentToDelete)
+          .map(comment => {
+            if (comment.replies && comment.replies.length > 0) {
+              return {
+                ...comment,
+                replies: removeComment(comment.replies),
+              };
+            }
+            return comment;
+          });
+      };
+      
+      setComments(prevComments => removeComment(prevComments));
+      setShowDeleteCommentModal(false);
+      setCommentToDelete(null);
+      
+      // Update comment count
+      setPost(prev => prev ? { ...prev, commentCount: Math.max(0, prev.commentCount - 1) } : null);
+    } catch (error) {
+      console.error('PostDetailScreen: Error deleting comment', error);
+      setErrorMessage(t('failedToDeleteComment'));
+    } finally {
+      setIsDeletingComment(false);
+    }
+  };
+
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
   };
@@ -296,6 +427,8 @@ export default function PostDetailScreen() {
     const hasReplies = reply.replies && reply.replies.length > 0;
     const maxDepth = 5; // Limit visual nesting depth to prevent excessive indentation
     const effectiveDepth = Math.min(depth, maxDepth);
+    const isOwnComment = user?.id === reply.authorId;
+    const likeIconName = reply.hasLiked ? 'favorite' : 'favorite-border';
     
     return (
       <View key={reply.id} style={[styles.replyCard, { marginLeft: effectiveDepth * 12 }]}>
@@ -306,18 +439,50 @@ export default function PostDetailScreen() {
             <Text style={styles.commentTimestamp}>{timeAgo}</Text>
           </View>
           <Text style={styles.commentContent}>{reply.content}</Text>
-          <TouchableOpacity 
-            style={styles.replyButton}
-            onPress={() => handleReplyPress(reply)}
-          >
-            <IconSymbol
-              ios_icon_name="arrowshape.turn.up.left"
-              android_material_icon_name="reply"
-              size={14}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.replyButtonText}>{t('reply')}</Text>
-          </TouchableOpacity>
+          
+          <View style={styles.commentActionsRow}>
+            <TouchableOpacity 
+              style={styles.commentActionButton}
+              onPress={() => handleLikeComment(reply.id)}
+            >
+              <IconSymbol
+                ios_icon_name={reply.hasLiked ? 'heart.fill' : 'heart'}
+                android_material_icon_name={likeIconName}
+                size={14}
+                color={reply.hasLiked ? colors.primary : colors.textSecondary}
+              />
+              <Text style={[styles.commentActionText, reply.hasLiked && styles.commentActionTextActive]}>
+                {reply.likeCount}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.commentActionButton}
+              onPress={() => handleReplyPress(reply)}
+            >
+              <IconSymbol
+                ios_icon_name="arrowshape.turn.up.left"
+                android_material_icon_name="reply"
+                size={14}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.commentActionText}>{t('reply')}</Text>
+            </TouchableOpacity>
+            
+            {isOwnComment && (
+              <TouchableOpacity 
+                style={styles.commentActionButton}
+                onPress={() => handleDeleteCommentPress(reply.id)}
+              >
+                <IconSymbol
+                  ios_icon_name="trash"
+                  android_material_icon_name="delete"
+                  size={14}
+                  color="#FF3B30"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
           
           {/* Recursively render nested replies */}
           {hasReplies && (
@@ -333,6 +498,8 @@ export default function PostDetailScreen() {
   const renderComment = ({ item }: { item: Comment }) => {
     const timeAgo = formatTimeAgo(item.createdAt);
     const hasReplies = item.replies && item.replies.length > 0;
+    const isOwnComment = user?.id === item.authorId;
+    const likeIconName = item.hasLiked ? 'favorite' : 'favorite-border';
     
     return (
       <View style={styles.commentCard}>
@@ -341,18 +508,50 @@ export default function PostDetailScreen() {
           <Text style={styles.commentTimestamp}>{timeAgo}</Text>
         </View>
         <Text style={styles.commentContent}>{item.content}</Text>
-        <TouchableOpacity 
-          style={styles.replyButton}
-          onPress={() => handleReplyPress(item)}
-        >
-          <IconSymbol
-            ios_icon_name="arrowshape.turn.up.left"
-            android_material_icon_name="reply"
-            size={14}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.replyButtonText}>{t('reply')}</Text>
-        </TouchableOpacity>
+        
+        <View style={styles.commentActionsRow}>
+          <TouchableOpacity 
+            style={styles.commentActionButton}
+            onPress={() => handleLikeComment(item.id)}
+          >
+            <IconSymbol
+              ios_icon_name={item.hasLiked ? 'heart.fill' : 'heart'}
+              android_material_icon_name={likeIconName}
+              size={14}
+              color={item.hasLiked ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[styles.commentActionText, item.hasLiked && styles.commentActionTextActive]}>
+              {item.likeCount}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.commentActionButton}
+            onPress={() => handleReplyPress(item)}
+          >
+            <IconSymbol
+              ios_icon_name="arrowshape.turn.up.left"
+              android_material_icon_name="reply"
+              size={14}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.commentActionText}>{t('reply')}</Text>
+          </TouchableOpacity>
+          
+          {isOwnComment && (
+            <TouchableOpacity 
+              style={styles.commentActionButton}
+              onPress={() => handleDeleteCommentPress(item.id)}
+            >
+              <IconSymbol
+                ios_icon_name="trash"
+                android_material_icon_name="delete"
+                size={14}
+                color="#FF3B30"
+              />
+            </TouchableOpacity>
+          )}
+        </View>
         
         {hasReplies && (
           <View style={styles.repliesContainer}>
@@ -563,6 +762,43 @@ export default function PostDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Delete Comment Confirmation Modal */}
+      <Modal
+        visible={showDeleteCommentModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isDeletingComment && setShowDeleteCommentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('deleteCommentConfirm')}</Text>
+            <Text style={styles.modalMessage}>{t('deleteCommentMessage')}</Text>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalButtonSecondary, isDeletingComment && styles.modalButtonDisabled]}
+                onPress={() => setShowDeleteCommentModal(false)}
+                disabled={isDeletingComment}
+              >
+                <Text style={styles.modalButtonTextSecondary}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalButtonDestructive, isDeletingComment && styles.modalButtonDisabled]}
+                onPress={handleDeleteComment}
+                disabled={isDeletingComment}
+              >
+                {isDeletingComment ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalButtonTextDestructive}>{t('delete')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -681,6 +917,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     fontWeight: '500',
+  },
+  commentActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 8,
+  },
+  commentActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  commentActionText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  commentActionTextActive: {
+    color: colors.primary,
   },
   repliesContainer: {
     marginTop: 12,
@@ -828,5 +1084,19 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalButtonDestructive: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalButtonTextDestructive: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
   },
 });

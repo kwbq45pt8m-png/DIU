@@ -205,6 +205,15 @@ const translations: Record<Language, Record<string, string>> = {
     updatePost: 'Update Post',
     updating: 'Updating...',
     deleting: 'Deleting...',
+    
+    // Comment actions
+    deleteComment: 'Delete Comment',
+    deleteCommentConfirm: 'Delete Comment?',
+    deleteCommentMessage: 'Are you sure you want to delete this comment? This action cannot be undone.',
+    commentDeleted: 'Comment deleted successfully',
+    failedToLikeComment: 'Failed to like comment. Please try again.',
+    failedToDeleteComment: 'Failed to delete comment. Please try again.',
+    signInToLikeComment: 'Sign in to like comments',
   },
   'zh-TW': {
     // App name
@@ -348,5 +357,14 @@ const translations: Record<Language, Record<string, string>> = {
     updatePost: '更新貼文',
     updating: '更新中...',
     deleting: '刪除中...',
+    
+    // Comment actions
+    deleteComment: '刪除評論',
+    deleteCommentConfirm: '刪除評論？',
+    deleteCommentMessage: '您確定要刪除此評論嗎？此操作無法復原。',
+    commentDeleted: '評論已成功刪除',
+    failedToLikeComment: '按讚評論失敗。請重試。',
+    failedToDeleteComment: '刪除評論失敗。請重試。',
+    signInToLikeComment: '登入以按讚評論',
   },
 };
