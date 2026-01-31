@@ -211,7 +211,7 @@ export default function HomeScreen() {
           <Image
             source={resolveImageSource(item.mediaUrl)}
             style={styles.mediaImage}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         ) : null}
 
@@ -423,14 +423,16 @@ const styles = StyleSheet.create({
   },
   mediaImage: {
     width: '100%',
-    height: 250,
+    aspectRatio: 1,
+    maxHeight: 400,
     borderRadius: 8,
     marginBottom: 16,
     backgroundColor: colors.background,
   },
   mediaVideo: {
     width: '100%',
-    height: 250,
+    aspectRatio: 16 / 9,
+    maxHeight: 400,
     borderRadius: 8,
     marginBottom: 16,
     backgroundColor: colors.background,
