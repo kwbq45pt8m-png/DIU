@@ -7,6 +7,8 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { Modal } from '@/components/ui/Modal';
+import { EditPostModal } from '@/components/ui/EditPostModal';
 
 interface Post {
   id: string;
@@ -24,6 +26,10 @@ export default function MyPostsScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
@@ -116,6 +122,70 @@ export default function MyPostsScreen() {
     router.push(`/post/${postId}`);
   };
 
+  const handleEditPress = (post: Post) => {
+    console.log('[MyPosts] Edit button pressed', { postId: post.id });
+    setSelectedPost(post);
+    setEditModalVisible(true);
+  };
+
+  const handleDeletePress = (post: Post) => {
+    console.log('[MyPosts] Delete button pressed', { postId: post.id });
+    setSelectedPost(post);
+    setDeleteModalVisible(true);
+  };
+
+  const handleUpdatePost = async (postId: string, content: string) => {
+    console.log('[MyPosts] Updating post', { postId, content });
+    setActionLoading(true);
+
+    try {
+      const { authenticatedPut } = await import('@/utils/api');
+      const updatedPost = await authenticatedPut<Post>(`/api/posts/${postId}`, {
+        content,
+      });
+      console.log('[MyPosts] Post updated successfully', updatedPost);
+
+      // Update the post in the list
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId ? { ...post, content: updatedPost.content } : post
+        )
+      );
+
+      setEditModalVisible(false);
+      setSelectedPost(null);
+    } catch (error) {
+      console.error('[MyPosts] Error updating post', error);
+      throw error;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeletePost = async () => {
+    if (!selectedPost) return;
+
+    console.log('[MyPosts] Deleting post', { postId: selectedPost.id });
+    setActionLoading(true);
+
+    try {
+      const { authenticatedDelete } = await import('@/utils/api');
+      await authenticatedDelete(`/api/posts/${selectedPost.id}`);
+      console.log('[MyPosts] Post deleted successfully');
+
+      // Remove the post from the list
+      setPosts(prevPosts => prevPosts.filter(post => post.id !== selectedPost.id));
+
+      setDeleteModalVisible(false);
+      setSelectedPost(null);
+    } catch (error) {
+      console.error('[MyPosts] Error deleting post', error);
+      throw error;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -145,7 +215,33 @@ export default function MyPostsScreen() {
       <View style={styles.postCard}>
         <View style={styles.postHeader}>
           <Text style={styles.username}>@{item.authorUsername}</Text>
-          <Text style={styles.timestamp}>{timeAgo}</Text>
+          <View style={styles.postHeaderRight}>
+            <Text style={styles.timestamp}>{timeAgo}</Text>
+            <View style={styles.postMenuButtons}>
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={() => handleEditPress(item)}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={18}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={() => handleDeletePress(item)}
+              >
+                <IconSymbol
+                  ios_icon_name="trash"
+                  android_material_icon_name="delete"
+                  size={18}
+                  color="#FF3B30"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
         <Text style={styles.postContent}>{item.content}</Text>
@@ -244,6 +340,30 @@ export default function MyPostsScreen() {
           </View>
         }
       />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        title={t('deletePostConfirm')}
+        message={t('deletePostMessage')}
+        confirmText={actionLoading ? t('deleting') : t('delete')}
+        cancelText={t('cancel')}
+        onConfirm={handleDeletePost}
+        confirmDestructive
+        showCancel
+      />
+
+      {/* Edit Post Modal */}
+      {selectedPost && (
+        <EditPostModal
+          visible={editModalVisible}
+          onClose={() => setEditModalVisible(false)}
+          postId={selectedPost.id}
+          initialContent={selectedPost.content}
+          onUpdate={handleUpdatePost}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -281,6 +401,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  postHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  postMenuButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  menuButton: {
+    padding: 4,
   },
   username: {
     fontSize: 14,
