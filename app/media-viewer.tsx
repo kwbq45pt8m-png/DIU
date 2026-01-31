@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Dimensions, StatusBar, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Dimensions, StatusBar, Platform, ActivityIndicator, Text } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { Image } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
@@ -13,6 +13,8 @@ export default function MediaViewerScreen() {
   const { mediaUrl, mediaType } = useLocalSearchParams<{ mediaUrl: string; mediaType: 'image' | 'video' }>();
   const router = useRouter();
   const [videoRef, setVideoRef] = useState<Video | null>(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
 
   console.log('[MediaViewer] Opening media viewer', { mediaUrl, mediaType });
 
@@ -36,11 +38,37 @@ export default function MediaViewerScreen() {
       {/* Media Content */}
       <View style={styles.mediaContainer}>
         {mediaType === 'image' && mediaUrl ? (
-          <Image
-            source={{ uri: mediaUrl }}
-            style={styles.fullscreenImage}
-            resizeMode="contain"
-          />
+          <>
+            <Image
+              source={{ uri: mediaUrl }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+              onLoadStart={() => {
+                console.log('[MediaViewer] Image loading started');
+                setImageLoading(true);
+                setImageError(false);
+              }}
+              onLoad={() => {
+                console.log('[MediaViewer] Image loaded successfully');
+                setImageLoading(false);
+              }}
+              onError={(error) => {
+                console.log('[MediaViewer] Image load error:', error.nativeEvent.error);
+                setImageLoading(false);
+                setImageError(true);
+              }}
+            />
+            {imageLoading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+              </View>
+            )}
+            {imageError && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>Failed to load image</Text>
+              </View>
+            )}
+          </>
         ) : null}
 
         {mediaType === 'video' && mediaUrl ? (
@@ -85,12 +113,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fullscreenImage: {
-    width: width,
-    height: height,
+    width: '100%',
+    height: '100%',
   },
   fullscreenVideo: {
-    width: width,
-    height: height,
+    width: '100%',
+    height: '100%',
   },
   closeButton: {
     position: 'absolute',
@@ -107,5 +135,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FFFFFF',
+    fontSize: 16,
   },
 });
