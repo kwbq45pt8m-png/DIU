@@ -11,7 +11,7 @@ export function registerMediaRoutes(app: App) {
    * POST /api/upload/media
    * Upload media file (image or video)
    * Multipart form data with 'media' field
-   * Max file size: 100MB
+   * Max file sizes: 10MB for images, 200MB for videos
    * Returns: { url: string, mediaKey: string, mediaType: 'image' | 'video' }
    * mediaKey is the permanent storage key for the file
    * url is a temporary signed URL for immediate preview
@@ -26,8 +26,8 @@ export function registerMediaRoutes(app: App) {
     if (!session) return;
 
     try {
-      // Get the file from the request
-      const data = await request.file({ limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB limit
+      // First, get the file with max allowed limit (200MB for videos)
+      const data = await request.file({ limits: { fileSize: 200 * 1024 * 1024 } }); // 200MB limit
 
       if (!data) {
         app.logger.warn({ userId: session.user.id }, 'No file provided in upload');
@@ -36,17 +36,23 @@ export function registerMediaRoutes(app: App) {
         });
       }
 
-      // Validate MIME type
+      // Validate MIME type first to determine appropriate size limit
       const mimeType = data.mimetype.toLowerCase();
       let mediaType: 'image' | 'video';
+      let maxFileSize: number;
+      let errorMessage: string;
 
       const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
       const validVideoTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
 
       if (validImageTypes.includes(mimeType)) {
         mediaType = 'image';
+        maxFileSize = 10 * 1024 * 1024; // 10MB for images
+        errorMessage = 'Image file is too large. Maximum size is 10MB';
       } else if (validVideoTypes.includes(mimeType)) {
         mediaType = 'video';
+        maxFileSize = 200 * 1024 * 1024; // 200MB for videos
+        errorMessage = 'Video file is too large. Maximum size is 200MB (approximately 30 seconds of video)';
       } else {
         app.logger.warn({ userId: session.user.id, mimeType }, 'Invalid file type');
         return reply.status(400).send({
@@ -55,15 +61,24 @@ export function registerMediaRoutes(app: App) {
       }
 
       try {
-        // Upload file to storage
+        // Get the buffer and check size
         const buffer = await data.toBuffer();
+
+        if (buffer.length > maxFileSize) {
+          app.logger.warn({ userId: session.user.id, mediaType, fileSize: buffer.length, maxFileSize }, 'File exceeds size limit');
+          return reply.status(413).send({
+            message: errorMessage
+          });
+        }
+
+        // Upload file to storage
         const timestamp = Date.now();
         const fileExtension = getFileExtension(mimeType);
         const fileName = `${timestamp}-${sanitizeFileName(data.filename)}`;
         const key = `media/${session.user.id}/${fileName}`;
 
         const uploadedKey = await app.storage.upload(key, buffer);
-        app.logger.info({ userId: session.user.id, mediaKey: uploadedKey }, 'Media file uploaded successfully');
+        app.logger.info({ userId: session.user.id, mediaType, fileSize: buffer.length, mediaKey: uploadedKey }, 'Media file uploaded successfully');
 
         // Generate signed URL for immediate preview
         const { url } = await app.storage.getSignedUrl(uploadedKey);
@@ -74,9 +89,9 @@ export function registerMediaRoutes(app: App) {
           mediaType,
         };
       } catch (uploadError) {
-        app.logger.error({ err: uploadError, userId: session.user.id }, 'File upload failed or exceeded size limit');
-        return reply.status(413).send({
-          message: 'File too large or upload failed (max 100MB)'
+        app.logger.error({ err: uploadError, userId: session.user.id }, 'File upload failed');
+        return reply.status(500).send({
+          message: 'File upload failed. Please try again.'
         });
       }
     } catch (error) {
