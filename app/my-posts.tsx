@@ -145,6 +145,14 @@ export default function MyPostsScreen() {
     setDeleteModalVisible(true);
   };
 
+  const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
+    console.log('[MyPosts] Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
+    router.push({
+      pathname: '/media-viewer',
+      params: { mediaUrl, mediaType },
+    });
+  };
+
   const handleUpdatePost = async (postId: string, content: string) => {
     console.log('[MyPosts] Updating post', { postId, content });
     setActionLoading(true);
@@ -262,21 +270,31 @@ export default function MyPostsScreen() {
         ) : null}
 
         {mediaUrl && mediaType === 'image' ? (
-          <Image
-            source={resolveImageSource(mediaUrl)}
-            style={styles.mediaImage}
-            resizeMode="contain"
-          />
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => handleMediaPress(mediaUrl, 'image')}
+          >
+            <Image
+              source={resolveImageSource(mediaUrl)}
+              style={styles.mediaImage}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
         ) : null}
 
         {mediaUrl && mediaType === 'video' ? (
-          <Video
-            source={{ uri: mediaUrl }}
-            style={styles.mediaVideo}
-            useNativeControls
-            resizeMode={ResizeMode.CONTAIN}
-            isLooping={false}
-          />
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => handleMediaPress(mediaUrl, 'video')}
+          >
+            <Video
+              source={{ uri: mediaUrl }}
+              style={styles.mediaVideo}
+              useNativeControls
+              resizeMode={ResizeMode.CONTAIN}
+              isLooping={false}
+            />
+          </TouchableOpacity>
         ) : null}
 
         <View style={styles.postActions}>

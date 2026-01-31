@@ -156,6 +156,14 @@ export default function HomeScreen() {
     router.push('/create-post');
   };
 
+  const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
+    console.log('HomeScreen: Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
+    router.push({
+      pathname: '/media-viewer',
+      params: { mediaUrl, mediaType },
+    });
+  };
+
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
   };
@@ -208,21 +216,31 @@ export default function HomeScreen() {
         ) : null}
 
         {item.mediaUrl && item.mediaType === 'image' ? (
-          <Image
-            source={resolveImageSource(item.mediaUrl)}
-            style={styles.mediaImage}
-            resizeMode="contain"
-          />
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => handleMediaPress(item.mediaUrl!, 'image')}
+          >
+            <Image
+              source={resolveImageSource(item.mediaUrl)}
+              style={styles.mediaImage}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
         ) : null}
 
         {item.mediaUrl && item.mediaType === 'video' ? (
-          <Video
-            source={{ uri: item.mediaUrl }}
-            style={styles.mediaVideo}
-            useNativeControls
-            resizeMode={ResizeMode.CONTAIN}
-            isLooping={false}
-          />
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => handleMediaPress(item.mediaUrl!, 'video')}
+          >
+            <Video
+              source={{ uri: item.mediaUrl }}
+              style={styles.mediaVideo}
+              useNativeControls
+              resizeMode={ResizeMode.CONTAIN}
+              isLooping={false}
+            />
+          </TouchableOpacity>
         ) : null}
 
         <View style={styles.postActions}>
