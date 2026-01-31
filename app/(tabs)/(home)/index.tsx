@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, Image, ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -38,6 +38,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const isNavigatingRef = useRef(false);
 
   const loadPosts = async () => {
     console.log('HomeScreen: Loading posts (public endpoint)');
@@ -158,11 +159,24 @@ export default function HomeScreen() {
   };
 
   const handleMediaPress = (mediaUrl: string, mediaType: 'image' | 'video') => {
+    // Prevent multiple simultaneous navigations
+    if (isNavigatingRef.current) {
+      console.log('HomeScreen: Navigation already in progress, ignoring tap');
+      return;
+    }
+
     console.log('HomeScreen: Media pressed, opening fullscreen viewer', { mediaUrl, mediaType });
+    isNavigatingRef.current = true;
+
     router.push({
       pathname: '/media-viewer',
       params: { mediaUrl, mediaType },
     });
+
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 1000);
   };
 
   const handleAuthModalClose = () => {
