@@ -31,6 +31,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user) {
+      console.log('Profile: User data loaded', { userId: user.id, name: user.name, email: user.email });
       loadStamps();
     }
   }, [user]);
@@ -89,10 +90,11 @@ export default function ProfileScreen() {
     try {
       const { authenticatedPut } = await import('@/utils/api');
       await authenticatedPut('/api/users/profile', { username: newUsername });
-      console.log('Profile: Username updated successfully');
+      console.log('Profile: Username updated successfully on backend');
       
-      // Refresh user data
+      // Refresh user data to get the updated username
       await fetchUser();
+      console.log('Profile: User data refreshed after username update');
       
       // Close modal and reset
       setShowUsernameModal(false);
@@ -168,6 +170,7 @@ export default function ProfileScreen() {
     );
   }
 
+  const displayUsername = user?.name || 'username';
   const stampCount = stamps.length;
   const stampCountText = `${stampCount}`;
 
@@ -192,7 +195,7 @@ export default function ProfileScreen() {
           </View>
           
           <View style={styles.usernameContainer}>
-            <Text style={styles.username}>@{user?.name || 'username'}</Text>
+            <Text style={styles.username}>@{displayUsername}</Text>
             <TouchableOpacity
               style={styles.editUsernameButton}
               onPress={() => {
