@@ -1,19 +1,39 @@
 
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform, Modal, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform, Modal, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import Button from '@/components/button';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function UsernameSetupScreen() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+  const [isReady, setIsReady] = useState(false);
   const router = useRouter();
+  const { user, loading: authLoading, fetchUser } = useAuth();
+
+  // Wait for auth to be ready before showing the form
+  useEffect(() => {
+    console.log('Username setup: Auth state check', { user: !!user, authLoading });
+    
+    if (!authLoading) {
+      if (!user) {
+        // No user session - redirect to auth
+        console.log('Username setup: No user session, redirecting to auth');
+        router.replace('/auth');
+      } else {
+        // User session exists, ready to proceed
+        console.log('Username setup: User session ready');
+        setIsReady(true);
+      }
+    }
+  }, [user, authLoading]);
 
   const handleSubmit = async () => {
-    console.log('Username setup: Submit clicked', { username });
+    console.log('Username setup: Submit clicked', { username, hasUser: !!user });
     
     if (!username.trim()) {
       setErrorModal({ visible: true, message: 'Please enter a username' });
@@ -31,12 +51,17 @@ export default function UsernameSetupScreen() {
     }
 
     setLoading(true);
-    console.log('Username setup: Validating username', { username });
+    console.log('Username setup: Submitting username', { username });
 
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      await authenticatedPost('/api/users/setup-username', { username: username.trim() });
-      console.log('Username setup: Success, navigating to home');
+      const response = await authenticatedPost('/api/users/setup-username', { username: username.trim() });
+      console.log('Username setup: Success', response);
+      
+      // Refresh user session to get updated username
+      await fetchUser();
+      
+      console.log('Username setup: Navigating to home');
       router.replace('/(tabs)/(home)/');
     } catch (error: any) {
       console.error('Username setup: Error', error);
@@ -45,11 +70,28 @@ export default function UsernameSetupScreen() {
       // Check if username is already taken
       if (error.message?.includes('already taken') || error.message?.includes('exists')) {
         setErrorModal({ visible: true, message: 'This username is already taken. Please choose another one.' });
+      } else if (error.message?.includes('Authentication token not found')) {
+        setErrorModal({ visible: true, message: 'Session expired. Please sign in again.' });
+        setTimeout(() => {
+          router.replace('/auth');
+        }, 2000);
       } else {
         setErrorModal({ visible: true, message: 'Failed to set username. Please try again.' });
       }
     }
   };
+
+  // Show loading while auth is initializing
+  if (!isReady) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Setting up your account...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -120,6 +162,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   content: {
     flex: 1,

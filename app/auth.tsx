@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   View,
@@ -43,6 +44,8 @@ export default function AuthScreen() {
     }
 
     setLoading(true);
+    console.log('Auth: Starting email auth', { mode, email });
+    
     try {
       if (mode === "signin") {
         await signInWithEmail(email, password);
@@ -50,22 +53,34 @@ export default function AuthScreen() {
         await signUpWithEmail(email, password, name);
       }
       
+      console.log('Auth: Email auth successful, waiting for session sync...');
+      
+      // Wait a bit for the session to be fully synced
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       // Check if user needs to set up username
       const { authenticatedGet } = await import('@/utils/api');
       try {
+        console.log('Auth: Checking user profile...');
         const profile = await authenticatedGet('/api/users/profile');
+        console.log('Auth: Profile retrieved', { hasUsername: !!profile?.username });
+        
         if (profile && profile.username) {
           // User already has username, go to home
+          console.log('Auth: User has username, navigating to home');
           router.replace("/(tabs)/(home)/");
         } else {
           // User needs to set username
+          console.log('Auth: User needs username, navigating to setup');
           router.replace("/username-setup");
         }
-      } catch (error) {
+      } catch (error: any) {
+        console.log('Auth: Profile check failed, assuming username setup needed', error.message);
         // If profile check fails, assume username setup is needed
         router.replace("/username-setup");
       }
     } catch (error: any) {
+      console.error('Auth: Email auth failed', error);
       setErrorModal({ visible: true, message: error.message || "Authentication failed" });
     } finally {
       setLoading(false);
@@ -74,6 +89,8 @@ export default function AuthScreen() {
 
   const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
     setLoading(true);
+    console.log('Auth: Starting social auth', { provider });
+    
     try {
       if (provider === "google") {
         await signInWithGoogle();
@@ -83,22 +100,34 @@ export default function AuthScreen() {
         await signInWithGitHub();
       }
       
+      console.log('Auth: Social auth successful, waiting for session sync...');
+      
+      // Wait a bit for the session to be fully synced
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       // Check if user needs to set up username
       const { authenticatedGet } = await import('@/utils/api');
       try {
+        console.log('Auth: Checking user profile...');
         const profile = await authenticatedGet('/api/users/profile');
+        console.log('Auth: Profile retrieved', { hasUsername: !!profile?.username });
+        
         if (profile && profile.username) {
           // User already has username, go to home
+          console.log('Auth: User has username, navigating to home');
           router.replace("/(tabs)/(home)/");
         } else {
           // User needs to set username
+          console.log('Auth: User needs username, navigating to setup');
           router.replace("/username-setup");
         }
-      } catch (error) {
+      } catch (error: any) {
+        console.log('Auth: Profile check failed, assuming username setup needed', error.message);
         // If profile check fails, assume username setup is needed
         router.replace("/username-setup");
       }
     } catch (error: any) {
+      console.error('Auth: Social auth failed', error);
       setErrorModal({ visible: true, message: error.message || "Authentication failed" });
     } finally {
       setLoading(false);
