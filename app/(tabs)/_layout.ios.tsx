@@ -27,7 +27,7 @@ export default function TabLayout() {
         <Icon sf={{ default: 'house', selected: 'house.fill' }} drawable="home" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="diu">
-        <Label>DIU</Label>
+        <Label>FUCK</Label>
         <Icon sf={{ default: 'circle', selected: 'circle.fill' }} drawable="album" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="interactions">

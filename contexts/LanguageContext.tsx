@@ -138,12 +138,12 @@ const translations: Record<Language, Record<string, string>> = {
     dailyStamps: 'Daily Stamps',
     stampsCollected: 'Stamps Collected',
     noStampsYet: 'No stamps yet',
-    postToEarnStamp: 'Create a post to earn your first DIU stamp!',
+    postToEarnStamp: 'Create a post to earn your first FUCK stamp!',
     
-    // DIU Button
+    // FUCK Button
     tapToVent: 'Tap to Vent',
     releaseYourAnger: 'Release your anger with a tap',
-    pressAndHold: 'Press the button to hear the DIU sound',
+    pressAndHold: 'Press the button to hear the FUCK sound',
     
     // Create post screen
     createPost: 'Create Post',
@@ -313,12 +313,12 @@ const translations: Record<Language, Record<string, string>> = {
     dailyStamps: '每日印章',
     stampsCollected: '已收集印章',
     noStampsYet: '尚無印章',
-    postToEarnStamp: '發佈貼文以獲得您的第一個 DIU 印章！',
+    postToEarnStamp: '發佈貼文以獲得您的第一個 FUCK 印章！',
     
-    // DIU Button
+    // FUCK Button
     tapToVent: '點擊發洩',
     releaseYourAnger: '點擊釋放您的憤怒',
-    pressAndHold: '按下按鈕以聽到 DIU 聲音',
+    pressAndHold: '按下按鈕以聽到 FUCK 聲音',
     
     // Create post screen
     createPost: '建立貼文',
