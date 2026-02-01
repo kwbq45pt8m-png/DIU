@@ -23,7 +23,7 @@ export default function TabLayout() {
       name: 'diu',
       route: '/(tabs)/diu',
       icon: 'album',
-      label: 'FUCK',
+      label: 'DIU',
     },
     {
       name: 'interactions',

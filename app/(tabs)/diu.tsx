@@ -7,32 +7,32 @@ import { colors } from '@/styles/commonStyles';
 import { useLanguage } from '@/contexts/LanguageContext';
 import * as Haptics from 'expo-haptics';
 
-export default function FUCKScreen() {
+export default function DIUScreen() {
   const { t } = useLanguage();
   const [isPressed, setIsPressed] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const fuckText = 'FUCK';
+  const diuText = 'DIU';
   const tapToVentText = t('tapToVent');
   const releaseYourAngerText = t('releaseYourAnger');
 
-  const playFUCKSound = async () => {
-    console.log('FUCK: Playing FUCK pronunciation');
+  const playDIUSound = async () => {
+    console.log('DIU: Playing Chinese pronunciation for 屌');
     try {
       // Stop any ongoing speech
       await Speech.stop();
 
-      // Speak "FUCK" with clear pronunciation
-      Speech.speak('FUCK', {
-        language: 'en-US',
+      // Speak "屌" (diu) with Chinese pronunciation
+      Speech.speak('屌', {
+        language: 'zh-CN', // Chinese (Simplified) - works for Cantonese pronunciation
         pitch: 1.0,
         rate: 1.0,
         volume: 1.0,
       });
       
-      console.log('FUCK: Speech started successfully');
+      console.log('DIU: Speech started successfully');
     } catch (error) {
-      console.error('FUCK: Error speaking FUCK', error);
+      console.error('DIU: Error speaking 屌', error);
       // Fallback: just provide haptic feedback if speech fails
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -41,7 +41,7 @@ export default function FUCKScreen() {
   };
 
   const handlePressIn = () => {
-    console.log('FUCK: Button pressed');
+    console.log('DIU: Button pressed');
     setIsPressed(true);
     
     // Haptic feedback
@@ -59,7 +59,7 @@ export default function FUCKScreen() {
   };
 
   const handlePressOut = () => {
-    console.log('FUCK: Button released');
+    console.log('DIU: Button released');
     setIsPressed(false);
 
     // Animate button release
@@ -70,14 +70,14 @@ export default function FUCKScreen() {
       bounciness: 10,
     }).start();
 
-    // Play FUCK pronunciation
-    playFUCKSound();
+    // Play DIU pronunciation
+    playDIUSound();
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{fuckText}</Text>
+        <Text style={styles.headerTitle}>{diuText}</Text>
       </View>
 
       <View style={styles.content}>
@@ -95,14 +95,14 @@ export default function FUCKScreen() {
           >
             <Animated.View
               style={[
-                styles.fuckButton,
+                styles.diuButton,
                 {
                   transform: [{ scale: scaleAnim }],
                   backgroundColor: isPressed ? colors.primaryDark : colors.primary,
                 },
               ]}
             >
-              <Text style={styles.fuckButtonText}>{fuckText}</Text>
+              <Text style={styles.diuButtonText}>{diuText}</Text>
             </Animated.View>
           </TouchableOpacity>
         </View>
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fuckButton: {
+  diuButton: {
     width: 280,
     height: 280,
     borderRadius: 140,
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 15,
   },
-  fuckButtonText: {
+  diuButtonText: {
     fontSize: 72,
     fontWeight: '900',
     color: '#FFFFFF',

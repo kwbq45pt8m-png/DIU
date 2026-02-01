@@ -71,6 +71,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     home: 'Home',
     profile: 'Profile',
+    diu: 'DIU',
     
     // Common actions
     signIn: 'Sign In',
@@ -138,12 +139,12 @@ const translations: Record<Language, Record<string, string>> = {
     dailyStamps: 'Daily Stamps',
     stampsCollected: 'Stamps Collected',
     noStampsYet: 'No stamps yet',
-    postToEarnStamp: 'Create a post to earn your first FUCK stamp!',
+    postToEarnStamp: 'Create a post to earn your first DIU stamp!',
     
-    // FUCK Button
+    // DIU Button
     tapToVent: 'Tap to Vent',
     releaseYourAnger: 'Release your anger with a tap',
-    pressAndHold: 'Press the button to hear the FUCK sound',
+    pressAndHold: 'Press the button to hear the DIU sound',
     
     // Create post screen
     createPost: 'Create Post',
@@ -246,6 +247,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     home: '首頁',
     profile: '個人資料',
+    diu: 'DIU',
     
     // Common actions
     signIn: '登入',
@@ -313,12 +315,12 @@ const translations: Record<Language, Record<string, string>> = {
     dailyStamps: '每日印章',
     stampsCollected: '已收集印章',
     noStampsYet: '尚無印章',
-    postToEarnStamp: '發佈貼文以獲得您的第一個 FUCK 印章！',
+    postToEarnStamp: '發佈貼文以獲得您的第一個 DIU 印章！',
     
-    // FUCK Button
+    // DIU Button
     tapToVent: '點擊發洩',
     releaseYourAnger: '點擊釋放您的憤怒',
-    pressAndHold: '按下按鈕以聽到 FUCK 聲音',
+    pressAndHold: '按下按鈕以聽到 DIU 聲音',
     
     // Create post screen
     createPost: '建立貼文',
