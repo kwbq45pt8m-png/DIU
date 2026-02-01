@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { App } from '../index.js';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 
 /**
  * Profile Routes - handles user profile viewing and updates
@@ -52,6 +53,7 @@ export function registerProfileRoutes(app: App) {
    * PUT /api/profiles/me
    * Update current user's profile (bio, username, etc)
    * Body: { username?: string, bio?: string }
+   * Updates both profiles table and Better Auth user.name field
    */
   app.fastify.put('/api/profiles/me', async (
     request: FastifyRequest,
@@ -123,6 +125,23 @@ export function registerProfileRoutes(app: App) {
         .where(eq(schema.userProfiles.userId, session.user.id))
         .returning();
 
+      // Update Better Auth user's name field if username changed
+      if (newUsername !== existingProfile.username) {
+        try {
+          await app.db
+            .update(authSchema.user)
+            .set({
+              name: newUsername,
+              updatedAt: new Date(),
+            })
+            .where(eq(authSchema.user.id, session.user.id));
+          app.logger.info({ userId: session.user.id, newUsername }, 'User name field updated in auth table');
+        } catch (authError) {
+          app.logger.warn({ err: authError, userId: session.user.id }, 'Failed to update user name in auth table, profile still updated');
+          // Don't fail the response if auth update fails
+        }
+      }
+
       app.logger.info({ userId: session.user.id, username: newUsername, bio }, 'Profile updated successfully');
       return updated;
     } catch (error) {
@@ -136,6 +155,7 @@ export function registerProfileRoutes(app: App) {
    * Alias for PUT /api/profiles/me for backward compatibility
    * Update current user's profile (username, bio, etc)
    * Body: { username?: string, bio?: string }
+   * Updates both profiles table and Better Auth user.name field
    */
   app.fastify.put('/api/users/profile', async (
     request: FastifyRequest,
@@ -206,6 +226,23 @@ export function registerProfileRoutes(app: App) {
         })
         .where(eq(schema.userProfiles.userId, session.user.id))
         .returning();
+
+      // Update Better Auth user's name field if username changed
+      if (newUsername !== existingProfile.username) {
+        try {
+          await app.db
+            .update(authSchema.user)
+            .set({
+              name: newUsername,
+              updatedAt: new Date(),
+            })
+            .where(eq(authSchema.user.id, session.user.id));
+          app.logger.info({ userId: session.user.id, newUsername }, 'User name field updated in auth table');
+        } catch (authError) {
+          app.logger.warn({ err: authError, userId: session.user.id }, 'Failed to update user name in auth table, profile still updated');
+          // Don't fail the response if auth update fails
+        }
+      }
 
       app.logger.info({ userId: session.user.id, username: newUsername, bio }, 'Profile updated successfully');
       return updated;
