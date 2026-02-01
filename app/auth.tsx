@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
+  const { user, signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
     useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
@@ -28,8 +28,40 @@ export default function AuthScreen() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+  const [isCheckingProfile, setIsCheckingProfile] = useState(false);
 
-  if (authLoading) {
+  // Redirect authenticated users away from auth screen
+  useEffect(() => {
+    const checkAndRedirect = async () => {
+      if (!authLoading && user && !isCheckingProfile) {
+        console.log('Auth: User already authenticated, checking profile...');
+        setIsCheckingProfile(true);
+        
+        try {
+          const { authenticatedGet } = await import('@/utils/api');
+          const profile = await authenticatedGet('/api/users/profile');
+          console.log('Auth: Profile check result', { hasUsername: !!profile?.username });
+          
+          if (profile && profile.username) {
+            console.log('Auth: User has username, redirecting to home');
+            router.replace("/(tabs)/(home)/");
+          } else {
+            console.log('Auth: User needs username, redirecting to setup');
+            router.replace("/username-setup");
+          }
+        } catch (error: any) {
+          console.log('Auth: Profile check failed, redirecting to username setup', error.message);
+          router.replace("/username-setup");
+        } finally {
+          setIsCheckingProfile(false);
+        }
+      }
+    };
+
+    checkAndRedirect();
+  }, [user, authLoading]);
+
+  if (authLoading || isCheckingProfile) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
