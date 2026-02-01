@@ -14,12 +14,13 @@ export function registerAuthRoutes(app: App) {
    * POST /api/users/setup-username
    * Called after user registers/logs in to set their unique username
    * This is a required step after authentication
+   * Idempotent: if user already has a profile, returns success with existing profile
    */
   app.fastify.post('/api/users/setup-username', async (
     request: FastifyRequest,
     reply: FastifyReply
   ): Promise<{ success: boolean; message?: string; profile?: any } | void> => {
-    app.logger.info({ body: request.body }, 'Setting up username for user');
+    app.logger.info({ userId: (request as any).user?.id, body: request.body }, 'Setting up username for user');
 
     const session = await requireAuth(request, reply);
     if (!session) return;
@@ -36,22 +37,39 @@ export function registerAuthRoutes(app: App) {
 
     const trimmedUsername = username.trim();
 
-    // Check if username already exists
-    const existingProfile = await app.db
-      .select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.username, trimmedUsername))
-      .limit(1);
-
-    if (existingProfile.length > 0) {
-      app.logger.warn({ username: trimmedUsername }, 'Username already exists');
-      return reply.status(409).send({
-        success: false,
-        message: 'Username already taken'
-      });
-    }
-
     try {
+      // Check if user already has a profile
+      const existingUserProfile = await app.db
+        .select()
+        .from(schema.userProfiles)
+        .where(eq(schema.userProfiles.userId, session.user.id))
+        .limit(1);
+
+      // If user already has a profile, return success (idempotent)
+      if (existingUserProfile.length > 0) {
+        app.logger.info({ userId: session.user.id, username: existingUserProfile[0].username }, 'User already has profile, returning existing profile');
+        return {
+          success: true,
+          message: 'Username already set',
+          profile: existingUserProfile[0]
+        };
+      }
+
+      // Check if the requested username is already taken by another user
+      const existingUsername = await app.db
+        .select()
+        .from(schema.userProfiles)
+        .where(eq(schema.userProfiles.username, trimmedUsername))
+        .limit(1);
+
+      if (existingUsername.length > 0) {
+        app.logger.warn({ userId: session.user.id, username: trimmedUsername }, 'Username already taken by another user');
+        return reply.status(409).send({
+          success: false,
+          message: 'Username already taken'
+        });
+      }
+
       // Create user profile with username
       const [profile] = await app.db
         .insert(schema.userProfiles)
@@ -71,7 +89,7 @@ export function registerAuthRoutes(app: App) {
       app.logger.error({ err: error, userId: session.user.id, username: trimmedUsername }, 'Failed to set username');
       return reply.status(500).send({
         success: false,
-        message: 'Failed to set username'
+        message: 'Failed to set up username. Please try again later.'
       });
     }
   });

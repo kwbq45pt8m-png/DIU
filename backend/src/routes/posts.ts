@@ -67,6 +67,28 @@ export function registerPostRoutes(app: App) {
           createdAt: schema.posts.createdAt,
         });
 
+      // Auto-create daily stamp for today (if not already present)
+      try {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        const existingStamp = await app.db.query.dailyStamps.findFirst({
+          where: and(
+            eq(schema.dailyStamps.userId, session.user.id),
+            eq(schema.dailyStamps.stampDate, today)
+          ),
+        });
+
+        if (!existingStamp) {
+          await app.db.insert(schema.dailyStamps).values({
+            userId: session.user.id,
+            stampDate: today,
+          });
+          app.logger.info({ userId: session.user.id, stampDate: today }, 'Daily stamp created');
+        }
+      } catch (stampError) {
+        app.logger.warn({ err: stampError, userId: session.user.id }, 'Failed to create daily stamp, continuing with post creation');
+        // Don't fail post creation if stamp creation fails
+      }
+
       app.logger.info({ postId: post.id, userId: session.user.id }, 'Post created successfully');
       return post;
     } catch (error) {

@@ -70,6 +70,19 @@ export const commentLikes = pgTable('comment_likes', {
 }));
 
 /**
+ * Daily Stamps - tracks daily activity stamps for users (one per day)
+ * Used for streak/calendar tracking
+ */
+export const dailyStamps = pgTable('daily_stamps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  stampDate: text('stamp_date').notNull(), // YYYY-MM-DD format
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uniqueStamp: uniqueIndex('unique_daily_stamp').on(table.userId, table.stampDate),
+}));
+
+/**
  * Relations
  */
 
@@ -130,6 +143,13 @@ export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
   }),
   user: one(user, {
     fields: [commentLikes.userId],
+    references: [user.id],
+  }),
+}));
+
+export const dailyStampsRelations = relations(dailyStamps, ({ one }) => ({
+  user: one(user, {
+    fields: [dailyStamps.userId],
     references: [user.id],
   }),
 }));
