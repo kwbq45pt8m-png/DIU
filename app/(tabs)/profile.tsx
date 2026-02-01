@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,6 +9,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import Button from '@/components/button';
+import { authenticatedGet } from '@/utils/api';
+
+interface Stamp {
+  stampDate: string;
+  createdAt: string;
+}
 
 export default function ProfileScreen() {
   const { user, signOut, fetchUser } = useAuth();
@@ -20,6 +26,28 @@ export default function ProfileScreen() {
   const [newUsername, setNewUsername] = useState('');
   const [updatingUsername, setUpdatingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState('');
+  const [stamps, setStamps] = useState<Stamp[]>([]);
+  const [loadingStamps, setLoadingStamps] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      loadStamps();
+    }
+  }, [user]);
+
+  const loadStamps = async () => {
+    console.log('Profile: Loading stamps');
+    setLoadingStamps(true);
+    try {
+      const response = await authenticatedGet<Stamp[]>('/api/stamps/my-stamps');
+      console.log('Profile: Stamps loaded', { count: response.length });
+      setStamps(response);
+    } catch (error) {
+      console.error('Profile: Error loading stamps', error);
+    } finally {
+      setLoadingStamps(false);
+    }
+  };
 
   const handleLogout = async () => {
     console.log('Profile: Logout confirmed');
@@ -102,6 +130,10 @@ export default function ProfileScreen() {
   const usernamePlaceholderText = t('usernamePlaceholder');
   const usernameHintText = t('usernameHint');
   const updatingText = t('updating');
+  const dailyStampsText = t('dailyStamps');
+  const stampsCollectedText = t('stampsCollected');
+  const noStampsYetText = t('noStampsYet');
+  const postToEarnStampText = t('postToEarnStamp');
 
   // If user is not authenticated, show sign-in prompt
   if (!user) {
@@ -135,6 +167,9 @@ export default function ProfileScreen() {
       </SafeAreaView>
     );
   }
+
+  const stampCount = stamps.length;
+  const stampCountText = `${stampCount}`;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -175,6 +210,55 @@ export default function ProfileScreen() {
           </View>
           
           <Text style={styles.email}>{user?.email || 'email@example.com'}</Text>
+        </View>
+
+        {/* Daily Stamps Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{dailyStampsText}</Text>
+            {loadingStamps && <ActivityIndicator size="small" color={colors.primary} />}
+          </View>
+          <View style={styles.stampsCard}>
+            <View style={styles.stampsSummary}>
+              <View style={styles.stampIconContainer}>
+                <IconSymbol
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="star"
+                  size={32}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.stampsTextContainer}>
+                <Text style={styles.stampsCount}>{stampCountText}</Text>
+                <Text style={styles.stampsLabel}>{stampsCollectedText}</Text>
+              </View>
+            </View>
+            
+            {stamps.length === 0 ? (
+              <View style={styles.noStampsContainer}>
+                <Text style={styles.noStampsText}>{noStampsYetText}</Text>
+                <Text style={styles.noStampsHint}>{postToEarnStampText}</Text>
+              </View>
+            ) : (
+              <View style={styles.stampsGrid}>
+                {stamps.map((stamp, index) => {
+                  const dateObj = new Date(stamp.stampDate);
+                  const monthDay = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+                  return (
+                    <View key={index} style={styles.stampItem}>
+                      <IconSymbol
+                        ios_icon_name="star.fill"
+                        android_material_icon_name="star"
+                        size={24}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.stampDate}>{monthDay}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -428,11 +512,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 12,
   },
   card: {
     backgroundColor: colors.card,
@@ -445,6 +534,76 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
+  },
+  stampsCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stampsSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  stampIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  stampsTextContainer: {
+    flex: 1,
+  },
+  stampsCount: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  stampsLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  noStampsContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  noStampsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  noStampsHint: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  stampsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  stampItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 60,
+    paddingVertical: 8,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stampDate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 4,
   },
   guidelineItem: {
     flexDirection: 'row',

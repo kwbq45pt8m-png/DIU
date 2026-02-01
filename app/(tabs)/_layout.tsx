@@ -20,6 +20,12 @@ export default function TabLayout() {
       label: 'Feed',
     },
     {
+      name: 'diu',
+      route: '/(tabs)/diu',
+      icon: 'album',
+      label: 'DIU',
+    },
+    {
       name: 'interactions',
       route: '/(tabs)/interactions',
       icon: 'notifications',
@@ -50,6 +56,7 @@ export default function TabLayout() {
         }}
       >
         <Stack.Screen key="home" name="(home)" />
+        <Stack.Screen key="diu" name="diu" />
         <Stack.Screen key="interactions" name="interactions" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>

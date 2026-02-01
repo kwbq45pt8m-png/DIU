@@ -1,85 +1,71 @@
 
 import { StyleSheet } from 'react-native';
 
-// DIU - Bold, expressive colors for an anonymous venting platform
 export const colors = {
-  primary: '#FF3B30',      // Bold Red - for anger/venting theme
-  secondary: '#FF6B6B',    // Lighter Red
-  accent: '#FFD60A',       // Warning Yellow
-  background: '#000000',   // Pure Black
-  backgroundAlt: '#1C1C1E', // Dark Gray
-  text: '#FFFFFF',         // White text
-  textSecondary: '#8E8E93', // Gray text
-  card: '#2C2C2E',         // Dark card background
-  border: '#38383A',       // Border color
-  success: '#34C759',      // Green for success
-  highlight: '#FF9500',    // Orange highlight
+  // Primary colors
+  primary: '#FF6B6B',
+  primaryLight: '#FFE5E5',
+  primaryDark: '#E85555',
+  
+  // Background colors
+  background: '#000000',
+  backgroundAlt: '#1A1A1A',
+  card: '#1E1E1E',
+  
+  // Text colors
+  text: '#FFFFFF',
+  textSecondary: '#999999',
+  
+  // Border colors
+  border: '#333333',
+  
+  // Status colors
+  success: '#4CAF50',
+  error: '#F44336',
+  warning: '#FF9800',
+  info: '#2196F3',
 };
 
-export const buttonStyles = StyleSheet.create({
-  primaryButton: {
-    backgroundColor: colors.primary,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  secondaryButton: {
-    backgroundColor: colors.backgroundAlt,
-    alignSelf: 'center',
-    width: '100%',
-  },
-});
-
 export const commonStyles = StyleSheet.create({
-  wrapper: {
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    maxWidth: 800,
-    width: '100%',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    textAlign: 'center',
-    color: colors.text,
-    marginBottom: 12,
   },
   text: {
-    fontSize: 16,
-    fontWeight: '500',
     color: colors.text,
-    marginBottom: 8,
-    lineHeight: 24,
+    fontSize: 16,
   },
   textSecondary: {
-    fontSize: 14,
-    fontWeight: '400',
     color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  section: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+    fontSize: 14,
   },
   card: {
     backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
     borderRadius: 12,
     padding: 16,
-    marginVertical: 8,
-    width: '100%',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  button: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  input: {
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
   },
 });

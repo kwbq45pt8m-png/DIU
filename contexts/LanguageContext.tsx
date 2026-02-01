@@ -134,6 +134,17 @@ const translations: Record<Language, Record<string, string>> = {
     updateUsernameTitle: 'Update Your Username',
     updateUsernameMessage: 'Choose a new username for your profile.',
     
+    // Daily Stamps
+    dailyStamps: 'Daily Stamps',
+    stampsCollected: 'Stamps Collected',
+    noStampsYet: 'No stamps yet',
+    postToEarnStamp: 'Create a post to earn your first DIU stamp!',
+    
+    // DIU Button
+    tapToVent: 'Tap to Vent',
+    releaseYourAnger: 'Release your anger with a tap',
+    pressAndHold: 'Press the button to hear the DIU sound',
+    
     // Create post screen
     createPost: 'Create Post',
     postPlaceholder: "What's on your mind? Let it out...",
@@ -297,6 +308,17 @@ const translations: Record<Language, Record<string, string>> = {
     updateUsername: '更新使用者名稱',
     updateUsernameTitle: '更新您的使用者名稱',
     updateUsernameMessage: '為您的個人資料選擇新的使用者名稱。',
+    
+    // Daily Stamps
+    dailyStamps: '每日印章',
+    stampsCollected: '已收集印章',
+    noStampsYet: '尚無印章',
+    postToEarnStamp: '發佈貼文以獲得您的第一個 DIU 印章！',
+    
+    // DIU Button
+    tapToVent: '點擊發洩',
+    releaseYourAnger: '點擊釋放您的憤怒',
+    pressAndHold: '按下按鈕以聽到 DIU 聲音',
     
     // Create post screen
     createPost: '建立貼文',
