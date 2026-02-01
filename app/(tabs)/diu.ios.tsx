@@ -17,20 +17,20 @@ export default function DIUScreen() {
   const releaseYourAngerText = t('releaseYourAnger');
 
   const playDIUSound = async () => {
-    console.log('DIU: Playing Chinese pronunciation for 屌');
+    console.log('DIU: Playing Traditional Chinese pronunciation for 屌');
     try {
       // Stop any ongoing speech
       await Speech.stop();
 
-      // Speak "屌" (diu) with Chinese pronunciation
+      // Speak "屌" (diu) with Traditional Chinese pronunciation
       Speech.speak('屌', {
-        language: 'zh-CN', // Chinese (Simplified) - works for Cantonese pronunciation
+        language: 'zh-HK', // Traditional Chinese (Hong Kong) - Cantonese pronunciation
         pitch: 1.0,
         rate: 1.0,
         volume: 1.0,
       });
       
-      console.log('DIU: Speech started successfully');
+      console.log('DIU: Speech started successfully with Traditional Chinese');
     } catch (error) {
       console.error('DIU: Error speaking 屌', error);
       // Fallback: just provide haptic feedback if speech fails
