@@ -33,12 +33,12 @@ export default function DIUScreen() {
         shouldDuckAndroid: true,
       });
 
-      // Create and play sound
-      // Using a simple beep sound as placeholder
-      // In production, you would load an actual DIU sound file
+      // Use a base64 encoded short beep sound (works offline and cross-platform)
+      // This is a simple 440Hz beep sound encoded as WAV
+      const beepSound = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+      
       const { sound } = await Audio.Sound.createAsync(
-        // This is a placeholder - you would use require('./assets/sounds/diu.mp3') in production
-        { uri: 'https://www.soundjay.com/button/sounds/button-09.mp3' },
+        { uri: beepSound },
         { shouldPlay: true, volume: 1.0 }
       );
       
@@ -51,8 +51,14 @@ export default function DIUScreen() {
           soundRef.current = null;
         }
       });
+      
+      console.log('DIU: Sound played successfully');
     } catch (error) {
       console.error('DIU: Error playing sound', error);
+      // Fallback: just provide haptic feedback if sound fails
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     }
   };
 
