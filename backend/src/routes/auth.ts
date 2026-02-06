@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { App } from '../index.js';
 import { eq, and, ne } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 
 /**
  * Auth Routes - handles post-registration username setup
@@ -9,6 +10,30 @@ import * as schema from '../db/schema.js';
  */
 export function registerAuthRoutes(app: App) {
   const requireAuth = app.requireAuth();
+
+  /**
+   * GET /api/auth/health
+   * Health check endpoint to verify authentication system is operational
+   */
+  app.fastify.get('/api/auth/health', async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<{ status: string; message: string } | void> => {
+    app.logger.info({}, 'Auth health check requested');
+
+    try {
+      return {
+        status: 'ok',
+        message: 'Authentication system is operational'
+      };
+    } catch (error) {
+      app.logger.error({ err: error }, 'Auth health check failed');
+      return reply.status(500).send({
+        status: 'error',
+        message: 'Authentication system is not operational'
+      });
+    }
+  });
 
   /**
    * POST /api/users/setup-username
@@ -314,6 +339,106 @@ export function registerAuthRoutes(app: App) {
       return allInteractions;
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to fetch interactions');
+      throw error;
+    }
+  });
+
+  /**
+   * GET /api/auth/debug/users
+   * Debug endpoint to check if user exists in the database
+   * Query params: email (required)
+   * Returns: user object if found, or "not found" if user doesn't exist
+   */
+  app.fastify.get('/api/auth/debug/users', async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<any | void> => {
+    const query = request.query as { email?: string };
+    const email = query.email?.toLowerCase().trim();
+
+    if (!email) {
+      app.logger.warn({}, 'Debug: No email provided in debug users endpoint');
+      return reply.status(400).send({
+        message: 'Email parameter is required'
+      });
+    }
+
+    try {
+      app.logger.info({ email }, 'Debug: Checking if user exists');
+
+      const user = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.email, email),
+      });
+
+      if (!user) {
+        app.logger.info({ email }, 'Debug: User not found in database');
+        return {
+          found: false,
+          message: 'User not found',
+          email
+        };
+      }
+
+      // Check if user has an account with password
+      const account = await app.db.query.account.findFirst({
+        where: eq(authSchema.account.userId, user.id),
+      });
+
+      app.logger.info({ email, userId: user.id, name: user.name, hasAccount: !!account }, 'Debug: User found in database');
+      return {
+        found: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          emailVerified: user.emailVerified,
+          createdAt: user.createdAt,
+          hasPasswordAccount: !!account && !!account.password,
+          accountProvider: account?.providerId || null,
+        }
+      };
+    } catch (error) {
+      app.logger.error({ err: error, email }, 'Debug: Failed to check user');
+      return reply.status(500).send({
+        message: 'Failed to check user',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  /**
+   * GET /api/auth/debug/sessions
+   * Debug endpoint to list all active sessions (requires authentication)
+   * Returns: array of sessions for the current user
+   */
+  app.fastify.get('/api/auth/debug/sessions', async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<any | void> => {
+    app.logger.info({}, 'Debug: Fetching user sessions');
+
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    try {
+      const sessions = await app.db.query.session.findMany({
+        where: eq(authSchema.session.userId, session.user.id),
+      });
+
+      app.logger.info({ userId: session.user.id, count: sessions.length }, 'Debug: Sessions retrieved');
+      return {
+        userId: session.user.id,
+        currentSession: session.session.id,
+        totalSessions: sessions.length,
+        sessions: sessions.map(s => ({
+          id: s.id,
+          expiresAt: s.expiresAt,
+          createdAt: s.createdAt,
+          isCurrent: s.id === session.session.id,
+        }))
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Debug: Failed to fetch sessions');
       throw error;
     }
   });
