@@ -128,23 +128,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      console.log('AuthContext: Signing in with email...');
+      console.log('AuthContext: Signing in with email...', { email });
       const result = await authClient.signIn.email({ email, password });
-      console.log('AuthContext: Sign in result', { success: !!result });
+      console.log('AuthContext: Sign in result', { 
+        success: !!result, 
+        hasError: !!result?.error,
+        hasData: !!result?.data,
+        errorDetails: result?.error 
+      });
       
       // Check if there's an error in the result
       if (result?.error) {
-        console.error('AuthContext: Sign in error from Better Auth', result.error);
+        console.error('AuthContext: Sign in error from Better Auth', {
+          message: result.error.message,
+          status: result.error.status,
+          fullError: result.error
+        });
         // Create a proper error object with status code
         const error: any = new Error(result.error.message || 'Authentication failed');
         error.status = result.error.status || 401;
+        error.originalError = result.error;
         throw error;
       }
       
+      // Check if we got a valid session
+      if (!result?.data?.session) {
+        console.error('AuthContext: No session data in result', result);
+        const error: any = new Error('Authentication failed - no session returned');
+        error.status = 401;
+        throw error;
+      }
+      
+      console.log('AuthContext: Sign in successful, fetching user...');
       // Immediately fetch user to update state
       await fetchUser();
     } catch (error: any) {
-      console.error("AuthContext: Email sign in failed:", error);
+      console.error("AuthContext: Email sign in failed:", {
+        message: error.message,
+        status: error.status,
+        originalError: error.originalError,
+        fullError: error
+      });
       // Ensure error has status code for proper error handling
       if (!error.status && error.message) {
         // Try to extract status from error message

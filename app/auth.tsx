@@ -112,7 +112,12 @@ export default function AuthScreen() {
         router.replace("/username-setup");
       }
     } catch (error: any) {
-      console.error('Auth: Email auth failed', error);
+      console.error('Auth: Email auth failed', {
+        message: error.message,
+        status: error.status,
+        originalError: error.originalError,
+        fullError: error
+      });
       let errorMessage = "Authentication failed";
       
       // Parse error for better user feedback
@@ -125,15 +130,20 @@ export default function AuthScreen() {
         errorMessage = "Invalid email or password. Please check your credentials and try again.";
       } else if (error.message?.toLowerCase().includes('unauthorized') || error.message?.toLowerCase().includes('forbidden')) {
         errorMessage = "Invalid email or password. Please check your credentials and try again.";
-      } else if (error.message?.toLowerCase().includes('invalid') && (error.message?.toLowerCase().includes('email') || error.message?.toLowerCase().includes('password'))) {
+      } else if (error.message?.toLowerCase().includes('invalid') && (error.message?.toLowerCase().includes('email') || error.message?.toLowerCase().includes('password') || error.message?.toLowerCase().includes('credentials'))) {
         errorMessage = "Invalid email or password. Please check your credentials and try again.";
       } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
         errorMessage = "Network error. Please check your connection and try again.";
       } else if (error.message) {
+        // Use the actual error message from the backend
         errorMessage = error.message;
       }
       
-      console.log('Auth: Showing error modal', { errorMessage, errorStatus: error.status });
+      console.log('Auth: Showing error modal', { 
+        errorMessage, 
+        errorStatus: error.status,
+        originalMessage: error.message 
+      });
       setErrorModal({ visible: true, message: errorMessage });
     } finally {
       setLoading(false);
