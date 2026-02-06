@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
@@ -101,19 +102,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUser = async () => {
     try {
       setLoading(true);
+      console.log('AuthContext: Fetching user session...');
       const session = await authClient.getSession();
+      
       if (session?.data?.user) {
+        console.log('AuthContext: User session found', { userId: session.data.user.id });
         setUser(session.data.user as User);
         // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
+          console.log('AuthContext: Bearer token synced to storage');
         }
       } else {
+        console.log('AuthContext: No user session found');
         setUser(null);
         await clearAuthTokens();
       }
     } catch (error) {
-      console.error("Failed to fetch user:", error);
+      console.error("AuthContext: Failed to fetch user:", error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -122,31 +128,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      await authClient.signIn.email({ email, password });
+      console.log('AuthContext: Signing in with email...');
+      const result = await authClient.signIn.email({ email, password });
+      console.log('AuthContext: Sign in result', { success: !!result });
+      
+      // Immediately fetch user to update state
       await fetchUser();
     } catch (error) {
-      console.error("Email sign in failed:", error);
+      console.error("AuthContext: Email sign in failed:", error);
       throw error;
     }
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
-      await authClient.signUp.email({
+      console.log('AuthContext: Signing up with email...');
+      const result = await authClient.signUp.email({
         email,
         password,
         name,
-        // Ensure name is passed in header or logic if required, usually passed in body
       });
+      console.log('AuthContext: Sign up result', { success: !!result });
+      
+      // Immediately fetch user to update state
       await fetchUser();
     } catch (error) {
-      console.error("Email sign up failed:", error);
+      console.error("AuthContext: Email sign up failed:", error);
       throw error;
     }
   };
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
+      console.log('AuthContext: Signing in with', provider);
       if (Platform.OS === "web") {
         const token = await openOAuthPopup(provider);
         await setBearerToken(token);
@@ -160,14 +174,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         // Note: The redirect will reload the app or be handled by deep linking.
         // fetchUser will be called on mount or via event listener if needed.
-        // For simple flow, we might need to listen to URL events.
-        // But better-auth expo client handles the redirect and session storage?
-        // We typically need to wait or rely on fetchUser on next app load.
-        // For now, call fetchUser just in case.
         await fetchUser();
       }
     } catch (error) {
-      console.error(`${provider} sign in failed:`, error);
+      console.error(`AuthContext: ${provider} sign in failed:`, error);
       throw error;
     }
   };
@@ -178,11 +188,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log('AuthContext: Signing out...');
       await authClient.signOut();
     } catch (error) {
-      console.error("Sign out failed (API):", error);
+      console.error("AuthContext: Sign out failed (API):", error);
     } finally {
        // Always clear local state
+       console.log('AuthContext: Clearing local auth state');
        setUser(null);
        await clearAuthTokens();
     }

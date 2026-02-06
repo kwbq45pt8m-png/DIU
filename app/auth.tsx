@@ -28,40 +28,40 @@ export default function AuthScreen() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
-  const [isCheckingProfile, setIsCheckingProfile] = useState(false);
 
   // Redirect authenticated users away from auth screen
+  // Only run this check when NOT actively signing in (loading === false)
   useEffect(() => {
     const checkAndRedirect = async () => {
-      if (!authLoading && user && !isCheckingProfile) {
-        console.log('Auth: User already authenticated, checking profile...');
-        setIsCheckingProfile(true);
+      // Don't redirect if we're in the middle of signing in
+      if (loading || authLoading || !user) {
+        return;
+      }
+
+      console.log('Auth: User already authenticated, checking profile...');
+      
+      try {
+        const { authenticatedGet } = await import('@/utils/api');
+        const profile = await authenticatedGet('/api/users/profile');
+        console.log('Auth: Profile check result', { hasUsername: !!profile?.username });
         
-        try {
-          const { authenticatedGet } = await import('@/utils/api');
-          const profile = await authenticatedGet('/api/users/profile');
-          console.log('Auth: Profile check result', { hasUsername: !!profile?.username });
-          
-          if (profile && profile.username) {
-            console.log('Auth: User has username, redirecting to home');
-            router.replace("/(tabs)/(home)/");
-          } else {
-            console.log('Auth: User needs username, redirecting to setup');
-            router.replace("/username-setup");
-          }
-        } catch (error: any) {
-          console.log('Auth: Profile check failed, redirecting to username setup', error.message);
+        if (profile && profile.username) {
+          console.log('Auth: User has username, redirecting to home');
+          router.replace("/(tabs)/(home)/");
+        } else {
+          console.log('Auth: User needs username, redirecting to setup');
           router.replace("/username-setup");
-        } finally {
-          setIsCheckingProfile(false);
         }
+      } catch (error: any) {
+        console.log('Auth: Profile check failed, redirecting to username setup', error.message);
+        router.replace("/username-setup");
       }
     };
 
     checkAndRedirect();
-  }, [user, authLoading]);
+  }, [user, authLoading, loading]);
 
-  if (authLoading || isCheckingProfile) {
+  if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
@@ -87,8 +87,8 @@ export default function AuthScreen() {
       
       console.log('Auth: Email auth successful, waiting for session sync...');
       
-      // Wait a bit for the session to be fully synced
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait longer for the session to be fully synced (increased from 1s to 2s)
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Check if user needs to set up username
       const { authenticatedGet } = await import('@/utils/api');
@@ -113,7 +113,20 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       console.error('Auth: Email auth failed', error);
-      setErrorModal({ visible: true, message: error.message || "Authentication failed" });
+      let errorMessage = "Authentication failed";
+      
+      // Parse error message for better user feedback
+      if (error.message?.includes('403')) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+      } else if (error.message?.includes('401')) {
+        errorMessage = "Invalid email or password.";
+      } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setErrorModal({ visible: true, message: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -134,8 +147,8 @@ export default function AuthScreen() {
       
       console.log('Auth: Social auth successful, waiting for session sync...');
       
-      // Wait a bit for the session to be fully synced
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait longer for the session to be fully synced (increased from 1s to 2s)
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Check if user needs to set up username
       const { authenticatedGet } = await import('@/utils/api');

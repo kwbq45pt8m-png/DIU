@@ -12,24 +12,38 @@ export default function UsernameSetupScreen() {
   const [loading, setLoading] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
   const [isReady, setIsReady] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const router = useRouter();
   const { user, loading: authLoading, fetchUser } = useAuth();
 
   // Wait for auth to be ready before showing the form
+  // Add a delay to prevent race conditions with auth state
   useEffect(() => {
-    console.log('Username setup: Auth state check', { user: !!user, authLoading });
-    
-    if (!authLoading) {
+    const checkAuth = async () => {
+      console.log('Username setup: Auth state check', { user: !!user, authLoading });
+      
+      if (authLoading) {
+        // Still loading, wait
+        return;
+      }
+
+      // Add a small delay to ensure auth state is fully synced
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       if (!user) {
-        // No user session - redirect to auth
-        console.log('Username setup: No user session, redirecting to auth');
+        // No user session after delay - redirect to auth
+        console.log('Username setup: No user session after delay, redirecting to auth');
         router.replace('/auth');
       } else {
         // User session exists, ready to proceed
         console.log('Username setup: User session ready');
         setIsReady(true);
       }
-    }
+      
+      setCheckingAuth(false);
+    };
+
+    checkAuth();
   }, [user, authLoading]);
 
   const handleSubmit = async () => {
@@ -61,6 +75,9 @@ export default function UsernameSetupScreen() {
       // Refresh user session to get updated username
       await fetchUser();
       
+      // Add a small delay to ensure the session is fully updated
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       console.log('Username setup: Navigating to home');
       router.replace('/(tabs)/(home)/');
     } catch (error: any) {
@@ -68,9 +85,9 @@ export default function UsernameSetupScreen() {
       setLoading(false);
       
       // Check if username is already taken
-      if (error.message?.includes('already taken') || error.message?.includes('exists')) {
+      if (error.message?.includes('already taken') || error.message?.includes('exists') || error.message?.includes('409')) {
         setErrorModal({ visible: true, message: 'This username is already taken. Please choose another one.' });
-      } else if (error.message?.includes('Authentication token not found')) {
+      } else if (error.message?.includes('Authentication token not found') || error.message?.includes('401')) {
         setErrorModal({ visible: true, message: 'Session expired. Please sign in again.' });
         setTimeout(() => {
           router.replace('/auth');
@@ -82,7 +99,7 @@ export default function UsernameSetupScreen() {
   };
 
   // Show loading while auth is initializing
-  if (!isReady) {
+  if (checkingAuth || !isReady) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
