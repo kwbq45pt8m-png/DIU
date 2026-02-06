@@ -132,10 +132,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await authClient.signIn.email({ email, password });
       console.log('AuthContext: Sign in result', { success: !!result });
       
+      // Check if there's an error in the result
+      if (result?.error) {
+        console.error('AuthContext: Sign in error from Better Auth', result.error);
+        // Create a proper error object with status code
+        const error: any = new Error(result.error.message || 'Authentication failed');
+        error.status = result.error.status || 401;
+        throw error;
+      }
+      
       // Immediately fetch user to update state
       await fetchUser();
-    } catch (error) {
+    } catch (error: any) {
       console.error("AuthContext: Email sign in failed:", error);
+      // Ensure error has status code for proper error handling
+      if (!error.status && error.message) {
+        // Try to extract status from error message
+        if (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized')) {
+          error.status = 401;
+        } else if (error.message.includes('403') || error.message.toLowerCase().includes('forbidden')) {
+          error.status = 403;
+        }
+      }
       throw error;
     }
   };
@@ -149,6 +167,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name,
       });
       console.log('AuthContext: Sign up result', { success: !!result });
+      
+      // Check if there's an error in the result
+      if (result?.error) {
+        console.error('AuthContext: Sign up error from Better Auth', result.error);
+        const error: any = new Error(result.error.message || 'Sign up failed');
+        error.status = result.error.status || 400;
+        throw error;
+      }
       
       // Immediately fetch user to update state
       await fetchUser();

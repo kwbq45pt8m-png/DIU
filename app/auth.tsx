@@ -115,17 +115,25 @@ export default function AuthScreen() {
       console.error('Auth: Email auth failed', error);
       let errorMessage = "Authentication failed";
       
-      // Parse error message for better user feedback
-      if (error.message?.includes('403')) {
+      // Parse error for better user feedback
+      // Check status code first (most reliable)
+      if (error.status === 401 || error.status === 403) {
         errorMessage = "Invalid email or password. Please check your credentials and try again.";
-      } else if (error.message?.includes('401')) {
-        errorMessage = "Invalid email or password.";
+      } 
+      // Fallback to checking error message
+      else if (error.message?.includes('401') || error.message?.includes('403')) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+      } else if (error.message?.toLowerCase().includes('unauthorized') || error.message?.toLowerCase().includes('forbidden')) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+      } else if (error.message?.toLowerCase().includes('invalid') && (error.message?.toLowerCase().includes('email') || error.message?.toLowerCase().includes('password'))) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
       } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
         errorMessage = "Network error. Please check your connection and try again.";
       } else if (error.message) {
         errorMessage = error.message;
       }
       
+      console.log('Auth: Showing error modal', { errorMessage, errorStatus: error.status });
       setErrorModal({ visible: true, message: errorMessage });
     } finally {
       setLoading(false);
