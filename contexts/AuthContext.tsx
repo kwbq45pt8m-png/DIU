@@ -129,12 +129,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = async (email: string, password: string) => {
     try {
       console.log('AuthContext: Signing in with email...', { email });
+      console.log('AuthContext: Calling authClient.signIn.email with:', { email, passwordLength: password?.length });
+      
       const result = await authClient.signIn.email({ email, password });
-      console.log('AuthContext: Sign in result', { 
-        success: !!result, 
+      
+      console.log('AuthContext: Raw Better Auth response:', JSON.stringify(result, null, 2));
+      console.log('AuthContext: Sign in result analysis', { 
+        resultType: typeof result,
+        isNull: result === null,
+        isUndefined: result === undefined,
         hasError: !!result?.error,
         hasData: !!result?.data,
-        errorDetails: result?.error 
+        errorDetails: result?.error,
+        dataDetails: result?.data ? {
+          hasUser: !!result.data.user,
+          hasSession: !!result.data.session,
+          userId: result.data.user?.id,
+          sessionToken: result.data.session?.token ? 'present' : 'missing'
+        } : 'no data'
       });
       
       // Check if there's an error in the result
@@ -142,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('AuthContext: Sign in error from Better Auth', {
           message: result.error.message,
           status: result.error.status,
-          fullError: result.error
+          fullError: JSON.stringify(result.error, null, 2)
         });
         // Create a proper error object with status code
         const error: any = new Error(result.error.message || 'Authentication failed');
@@ -153,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Check if we got a valid session
       if (!result?.data?.session) {
-        console.error('AuthContext: No session data in result', result);
+        console.error('AuthContext: No session data in result', JSON.stringify(result, null, 2));
         const error: any = new Error('Authentication failed - no session returned');
         error.status = 401;
         throw error;
@@ -167,7 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message: error.message,
         status: error.status,
         originalError: error.originalError,
-        fullError: error
+        fullError: JSON.stringify(error, null, 2),
+        errorName: error.name,
+        errorStack: error.stack
       });
       // Ensure error has status code for proper error handling
       if (!error.status && error.message) {

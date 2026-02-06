@@ -76,13 +76,28 @@ export default function AuthScreen() {
     }
 
     setLoading(true);
-    console.log('Auth: Starting email auth', { mode, email });
+    console.log('Auth: Starting email auth', { mode, email, passwordLength: password.length });
+    
+    // Debug: Check if user exists in database (only for sign-in)
+    if (mode === "signin") {
+      try {
+        const { apiGet } = await import('@/utils/api');
+        const debugResult = await apiGet(`/api/auth/debug/users?email=${encodeURIComponent(email)}`);
+        console.log('Auth: Debug - User existence check:', debugResult);
+      } catch (debugError) {
+        console.log('Auth: Debug check failed (non-critical):', debugError);
+      }
+    }
     
     try {
       if (mode === "signin") {
+        console.log('Auth: Calling signInWithEmail...');
         await signInWithEmail(email, password);
+        console.log('Auth: signInWithEmail completed successfully');
       } else {
+        console.log('Auth: Calling signUpWithEmail...');
         await signUpWithEmail(email, password, name);
+        console.log('Auth: signUpWithEmail completed successfully');
       }
       
       console.log('Auth: Email auth successful, waiting for session sync...');
@@ -116,7 +131,8 @@ export default function AuthScreen() {
         message: error.message,
         status: error.status,
         originalError: error.originalError,
-        fullError: error
+        fullError: JSON.stringify(error, null, 2),
+        errorName: error.name
       });
       let errorMessage = "Authentication failed";
       
